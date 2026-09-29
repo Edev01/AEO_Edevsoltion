@@ -26,8 +26,7 @@ export const runtime =
 export const dynamic =
   "force-dynamic";
 
-export const maxDuration =
-  600;
+export const maxDuration = 300;
 
 
 type MeasurementSummary = {
