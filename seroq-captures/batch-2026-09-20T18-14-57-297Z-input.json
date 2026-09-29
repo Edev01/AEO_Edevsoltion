@@ -1,0 +1,86 @@
+{
+  "targetBrand": "Initor Global",
+  "prompts": [
+    {
+      "queryId": "q_be52cc65f5e5",
+      "queryText": "What are the best outsourced accounting services for UK accountancy practices?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_f414e2f0238f",
+      "queryText": "Which accounting outsourcing companies can handle bookkeeping, payroll, VAT and year-end accounts?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_17e928830220",
+      "queryText": "Should an accounting practice hire staff or outsource accounting work offshore?",
+      "tags": [
+        "comparison",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_e413f3ee87b8",
+      "queryText": "How much does outsourced accounting cost for a UK accounting firm?",
+      "tags": [
+        "purchase",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_75d99970bbd6",
+      "queryText": "How can an accounting firm clear a bookkeeping and accounts preparation backlog?",
+      "tags": [
+        "problem",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_b1eea25975a3",
+      "queryText": "Which outsourced accounting providers offer dedicated full-time accountants?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_8f5585c26816",
+      "queryText": "What should I look for when choosing an offshore accounting partner for a UK practice?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_be4f24df99b9",
+      "queryText": "Are offshore accounting services safe and GDPR compliant for UK client data?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_6d7a1daf30ed",
+      "queryText": "Can outsourced accountants scale up temporarily during tax season or periods of rapid growth?",
+      "tags": [
+        "problem",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_e26525274915",
+      "queryText": "Which accounting outsourcing firms work with Xero, QuickBooks and Sage?",
+      "tags": [
+        "comparison",
+        "medium"
+      ]
+    }
+  ],
+  "trialsPerJourney": 5
+}

@@ -1,0 +1,59 @@
+{
+  "methodology": "Repeated logged-in ChatGPT consumer-UI sampling",
+  "instrument": "consumer-ui",
+  "provider": "chatgpt",
+  "targetBrand": "MailerLite",
+  "prompt": "Which email marketing tool is easiest to use for a beginner?",
+  "generatedAt": "2026-09-18T21:42:13.648Z",
+  "validTrials": 5,
+  "failedTrials": 1,
+  "presence": {
+    "hits": 5,
+    "n": 5,
+    "rate": 1,
+    "confidenceInterval": {
+      "level": 0.95,
+      "method": "Wilson",
+      "low": 0.5655175352168251,
+      "high": 1
+    }
+  },
+  "trials": [
+    {
+      "capturedAt": "2026-09-18T21:37:31.242Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, **MailerLite is probably the easiest email marketing tool to start with right now**. Its interface is relatively uncluttered, the drag-and-drop editor is straightforward, and you can handle newsletters, signup forms, landing pages, segmentation, and basic automations without learning a complicated CRM first. A recent 2026 EmailTooltester review specifically rates it highly for ease of use and calls it a top choice for complete beginners. **\\[EmailTooltester.com\\]**\n\nMy quick comparison:\n\n| Tool | Beginner friendliness | Best for |\n| --- | --- | --- |\n| **MailerLite** | ⭐⭐⭐⭐⭐ | Small businesses, beginners, newsletters + landing pages |\n| **Brevo** | ⭐⭐⭐⭐ | Businesses wanting email + SMS/WhatsApp/CRM |\n| **Kit** | ⭐⭐⭐⭐ | Creators, bloggers, newsletters |\n| **Mailchimp** | ⭐⭐⭐ | Familiar brand, businesses already using its ecosystem |\n\n**MailerLite** is particularly attractive if you're starting a small business because you can build the whole basic funnel in one place: **signup form → landing page → subscriber list → automated welcome emails → newsletters**. MailerLite currently offers those kinds of audience-building and automation features within its platform. MailerLite+1\n\n**Brevo** would be my alternative if you expect to need SMS, WhatsApp, transactional email, or more CRM-like functionality later. Its free tier currently includes email campaigns, a drag-and-drop editor and marketing automation for up to 2,000 contacts, but the overall product has more moving parts than MailerLite. Brevo Help+1\n\n**Kit** is especially good if you're primarily building a creator/newsletter business. Its current free plan supports up to 10,000 subscribers, unlimited broadcasts, landing pages and forms, although more sophisticated visual automations are on the paid Creator tier. Kit\n\nSo, **if you just want something you can open today and understand without watching hours of tutorials: start with MailerLite.**",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:38:22.977Z",
+      "targetMentioned": true,
+      "response": "For a beginner, **MailerLite is probably the easiest overall** right now. Its interface is clean, the email editor is simple, and things like signup forms, landing pages, newsletters, and basic automations are all in one place without feeling overly complicated. Independent testing in 2026 specifically gave MailerLite an “Ease of Use” award, and Capterra users currently rate its ease of use at 4.6/5. **\\[EmailTooltester.com\\]**\n\nI’d roughly position the main options like this:\n\n| Tool | Best for | Beginner friendliness |\n| --- | --- | --- |\n| **MailerLite** | Small businesses, newsletters, landing pages, forms | ⭐⭐⭐⭐⭐ |\n| **Brevo** | Small businesses wanting email + CRM/automation | ⭐⭐⭐⭐½ |\n| **Kit** | Creators, bloggers, newsletters | ⭐⭐⭐⭐½ |\n| **Mailchimp** | Broad marketing ecosystem/integrations | ⭐⭐⭐⭐ |\n\n**Brevo** is also easy to navigate and has a smooth drag-and-drop editor, but it has more CRM/marketing functionality around it, so there’s a little more to learn. **\\[EmailTooltester.com\\]**\n\n**Kit** is particularly simple if you're mainly a creator sending newsletters and building automated sequences, although its email design options are more limited and pricing can rise as your list grows. TechRadar+1\n\nSo if your question is simply **“I have never done email marketing before — what should I start with?”**, I'd start with **MailerLite**. It gives you enough room to grow without making the first few campaigns unnecessarily complicated.",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:40:18.779Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, I’d pick **MailerLite**. Its interface stays focused on the essentials, and its campaign builder, forms, landing pages, subscriber management, and even basic automations are relatively straightforward. A recent 2026 comparison specifically found MailerLite easier to learn than Mailchimp, while TechRadar described it as one of the more approachable email-marketing platforms for newcomers. Zapier+1\n\nA simple way to choose is:\n\n-   **MailerLite** — easiest overall for beginners and small businesses. Best balance of simplicity + newsletters + forms + landing pages + automation. MailerLite+1\n    \n-   **Kit** — especially easy if you're a **creator, blogger, newsletter writer, or YouTuber**. Its email and automation workflow is intentionally simplified for creators. Zapier+1\n    \n-   **Mailchimp** — still beginner-friendly and very established, but it now has so many features that navigation can feel more cluttered than MailerLite. Mailchimp+1\n    \n-   **Brevo** — easy enough for beginners, but I’d choose it when you also want things like CRM, transactional email, SMS, or broader business automation. TechRadar+1\n    \n\nSo if your question is simply **“I’ve never done email marketing before—what should I start with?” → MailerLite.** You can learn the basic workflow quickly without immediately dealing with the complexity of a full CRM or advanced marketing suite.",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:41:15.740Z",
+      "targetMentioned": true,
+      "response": "For a beginner, **MailerLite is probably the easiest email marketing platform to start with**. Its interface is cleaner and less cluttered than many competitors, and it gives you newsletters, drag-and-drop email design, signup forms, landing pages, websites, and basic automation in one place. Independent testing from EmailTooltester gave MailerLite its **Ease of Use award for 2023–2026**, and TechRadar also describes it as one of the more approachable email-marketing platforms. **\\[EmailTooltester.com\\]**\n\nA simple comparison:\n\n| Tool | Beginner friendliness | Best for |\n| --- | --- | --- |\n| **MailerLite** | ⭐⭐⭐⭐⭐ | Beginners, small businesses, newsletters, simple automation |\n| **Brevo** | ⭐⭐⭐⭐½ | Businesses wanting email + CRM + stronger automation |\n| **Mailchimp** | ⭐⭐⭐½ | Lots of integrations/templates, but increasingly complex |\n\n**Brevo** is also quite easy and becomes more attractive if you later want CRM features and more sophisticated automations. **\\[EmailTooltester.com\\]** **Mailchimp** is still usable for beginners, but its expanding feature set has made the interface comparatively more complicated. **\\[EmailTooltester.com\\]**\n\nSo if you're starting from zero and just want to **create a list → make a newsletter → set up a welcome email → publish a signup form**, I'd start with **MailerLite**. Their own onboarding is built around a simple three-step getting-started flow as well. MailerLite\n\n**Bottom line: MailerLite for simplicity; Brevo if you expect to need a CRM and deeper automation later.**",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:42:12.279Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, I’d start with **MailerLite**. Its interface is relatively simple, the drag-and-drop editor is straightforward, and it puts newsletters, automations, landing pages, and signup forms in one place. Its current free plan also includes up to **2,500 emails/month, 3 automations, 3 signup forms, and 1 landing page**, although the free subscriber limit was reduced to **250 active subscribers in June 2026**. MailerLite+2MailerLite+2\n\n**Mailchimp** is also beginner-friendly and has extensive tutorials, but it has grown into a broader marketing platform, so the interface can feel more complex once you move beyond a basic newsletter. Mailchimp says a first campaign can be launched in under 15 minutes. Mailchimp+1\n\n**Kit** is especially easy if you're a **creator, blogger, YouTuber, or newsletter business** rather than a traditional small business. Its workflow centers on broadcasts, sequences, subscriber growth, and creator automations. Kit Help Center+1\n\nSo for most beginners: **MailerLite → easiest all-around**, **Kit → easiest for creators**, **Mailchimp → good if you want a broader marketing ecosystem**.",
+      "sources": []
+    }
+  ],
+  "failures": [
+    {
+      "capturedAt": "2026-09-18T21:39:17.759Z",
+      "error": "chatgpt: All submission methods failed"
+    }
+  ]
+}

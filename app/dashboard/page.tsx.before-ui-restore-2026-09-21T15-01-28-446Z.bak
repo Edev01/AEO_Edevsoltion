@@ -1,0 +1,147 @@
+﻿"use client";
+
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+
+export default function Dashboard() {
+  const router = useRouter();
+  const [brandName, setBrandName] = useState("");
+  const [targetUrl, setTargetUrl] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState("");
+  const [showCheckout, setShowCheckout] = useState(false);
+  const [activeAction, setActiveAction] = useState("");
+
+  const handleTrigger = (action: string) => {
+    if (!brandName || !targetUrl) {
+      alert("Please enter the Brand Name and Target URL first.");
+      return;
+    }
+    setActiveAction(action);
+    setShowCheckout(true);
+  };
+
+  const executeAction = async () => {
+    setLoading(true);
+    setStatus(`Initializing ${activeAction}...`);
+
+    try {
+      const res = await fetch("/api/seroq/execute-audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ brand: brandName, url: targetUrl, action: activeAction })
+      });
+
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Execution failed");
+
+      setStatus("Operation complete! Redirecting...");
+      setTimeout(() => router.push("/report"), 800);
+    } catch (err: any) {
+      alert("Error: " + err.message);
+      setLoading(false);
+      setStatus("");
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-[#0A0F14] text-[#EAF2F1] p-6 sm:p-12 font-sans selection:bg-[#C0FC06] selection:text-black">
+      <div className="max-w-4xl mx-auto">
+        
+        {/* Dashboard Header */}
+        <div className="flex items-center justify-between mb-12 border-b border-white/10 pb-6">
+          <div className="flex items-center gap-2">
+            <span className="font-extrabold text-2xl text-white">SERO</span>
+            <span className="font-extrabold text-2xl text-[#C0FC06]">Q</span>
+            <span className="text-zinc-500 text-sm ml-2 font-mono">| Dashboard</span>
+          </div>
+          <a href="/" className="text-zinc-500 hover:text-white text-sm font-bold transition-colors">
+            &larr; Back Home
+          </a>
+        </div>
+
+        {/* Input Controls */}
+        <div className="bg-[#1A222B]/40 border border-white/10 rounded-2xl p-8 shadow-xl">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div>
+              <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-widest">Brand / Entity Name</label>
+              <input
+                type="text"
+                value={brandName}
+                onChange={(e) => setBrandName(e.target.value)}
+                placeholder="e.g. Initor Global"
+                className="w-full bg-[#0A0F14] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-[#C0FC06] transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-bold text-zinc-400 mb-2 uppercase tracking-widest">Target URL</label>
+              <input
+                type="text"
+                value={targetUrl}
+                onChange={(e) => setTargetUrl(e.target.value)}
+                placeholder="e.g. https://initor-global.co.uk"
+                className="w-full bg-[#0A0F14] border border-white/10 rounded-xl px-4 py-3.5 text-sm text-white focus:outline-none focus:border-[#C0FC06] transition-all"
+              />
+            </div>
+          </div>
+
+          {/* Action Buttons */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-4 border-t border-white/5">
+            <button
+              onClick={() => handleTrigger("Analyze Website")}
+              className="bg-[#C0FC06] text-[#0A0F14] px-4 py-4 rounded-xl font-bold text-sm hover:bg-[#aef005] transition-all shadow-[0_0_15px_rgba(192,252,6,0.15)]"
+            >
+              Analyze Website
+            </button>
+            <button
+              onClick={() => handleTrigger("Live Measurement")}
+              className="bg-white/5 text-white border border-white/10 px-4 py-4 rounded-xl font-bold text-sm hover:bg-white/10 transition-all"
+            >
+              Live Measurement
+            </button>
+            <button
+              onClick={() => handleTrigger("Extract Schema")}
+              className="bg-white/5 text-white border border-white/10 px-4 py-4 rounded-xl font-bold text-sm hover:bg-white/10 transition-all"
+            >
+              Extract Schema
+            </button>
+          </div>
+        </div>
+
+      </div>
+
+      {/* Checkout Modal */}
+      {showCheckout && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-[#0A0F14]/90 px-4 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-2xl border border-white/10 bg-[#1A222B] p-8 shadow-2xl relative">
+            <button onClick={() => setShowCheckout(false)} className="absolute top-5 right-5 text-zinc-500 hover:text-white transition-colors text-xl font-light">
+              &times;
+            </button>
+            
+            <h3 className="text-xl font-bold text-white mb-2">Execute {activeAction}</h3>
+            <p className="text-sm text-zinc-400 mb-6 leading-relaxed">
+              Target configuration set to <span className="text-[#C0FC06] font-bold">{targetUrl}</span>.
+            </p>
+            
+            <div className="rounded-xl border border-[#00A88F]/30 bg-[#00A88F]/10 p-4 mb-6 flex justify-between font-bold text-sm items-center">
+              <span className="text-white">Operation Access Cost</span>
+              <span className="text-xl text-[#C0FC06]">$20.00</span>
+            </div>
+
+            <button
+              onClick={executeAction}
+              disabled={loading}
+              className="w-full flex items-center justify-center gap-2 rounded-xl bg-[#C0FC06] hover:bg-[#aef005] py-4 text-sm font-bold text-[#0A0F14] transition-all disabled:opacity-50"
+            >
+              {loading ? (
+                <span className="animate-pulse">{status}</span>
+              ) : (
+                "Pay $20 & Execute Run"
+              )}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,0 +1,112 @@
+{
+  "brand": "swenta global",
+  "domain": "swentaglobal.com",
+  "category": "Business & Tax Experts - SwentaGlobal",
+  "queries": [
+    {
+      "q": "best business compliance and corporate tax consultants",
+      "brandFit": "unknown"
+    },
+    {
+      "q": "top business strategy and advisory consulting firms",
+      "brandFit": "unknown"
+    },
+    {
+      "q": "best corporate tax advisory services UK",
+      "brandFit": "unknown"
+    }
+  ],
+  "regressionThreshold": 10,
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.8-flash",
+      "classifyModel": "gemini-3.1-flash-lite",
+      "env": "GEMINI_API_KEY"
+    }
+  },
+  "basketVersion": 1,
+  "basketHistory": [
+    {
+      "version": 1,
+      "queries": [
+        {
+          "q": "best business compliance and corporate tax consultants",
+          "brandFit": "unknown"
+        },
+        {
+          "q": "top business strategy and advisory consulting firms",
+          "brandFit": "unknown"
+        },
+        {
+          "q": "best corporate tax advisory services UK",
+          "brandFit": "unknown"
+        }
+      ],
+      "since": "2026-09-20",
+      "kind": "initial"
+    }
+  ],
+  "candidatePool": [
+    {
+      "text": "top cross border business consultants for international expansion",
+      "intent": "commercial",
+      "score": 70,
+      "unverified": true,
+      "search_behavior": "retrieval-triggered",
+      "confidence": 0.9,
+      "valid": true,
+      "brandFit": "unknown"
+    },
+    {
+      "text": "top accounting and advisory firms for growing businesses",
+      "intent": "commercial",
+      "score": 50,
+      "unverified": true,
+      "search_behavior": "retrieval-triggered",
+      "confidence": 0.95,
+      "valid": true,
+      "brandFit": "unknown"
+    }
+  ],
+  "validationCache": [
+    {
+      "query": "best business compliance and corporate tax consultants",
+      "valid": true,
+      "confidence": 0.95,
+      "alternate_meanings": [
+        "Commercial search for tax and compliance consulting firms",
+        "Educational guide on corporate tax compliance practices"
+      ],
+      "dominant_interpretation": "Commercial search for tax and compliance consulting firms",
+      "search_behavior": "retrieval-triggered",
+      "reason": "AI searches for high-ranking corporate tax consultancy listings, matching Swenta's core business offering.",
+      "validatedAt": "2026-09-20T13:24:10.886Z"
+    },
+    {
+      "query": "top business strategy and advisory consulting firms",
+      "valid": true,
+      "confidence": 0.95,
+      "alternate_meanings": [
+        "Commercial search for ranked advisory consulting firms",
+        "Educational search for business strategy frameworks"
+      ],
+      "dominant_interpretation": "Commercial search for ranked advisory consulting firms",
+      "search_behavior": "retrieval-triggered",
+      "reason": "AI retrieves ranked lists of management consulting firms, a direct competitive space for Swenta.",
+      "validatedAt": "2026-09-20T13:24:10.886Z"
+    },
+    {
+      "query": "best corporate tax advisory services UK",
+      "valid": true,
+      "confidence": 0.95,
+      "alternate_meanings": [
+        "Commercial search for UK-based tax advisory firms",
+        "General inquiry regarding UK corporate tax regulations"
+      ],
+      "dominant_interpretation": "Commercial search for UK-based tax advisory firms",
+      "search_behavior": "retrieval-triggered",
+      "reason": "AI returns lists of verified UK-based tax advisory firms, matching Swenta's regional service category.",
+      "validatedAt": "2026-09-20T13:24:10.886Z"
+    }
+  ]
+}

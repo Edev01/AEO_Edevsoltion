@@ -1,0 +1,54 @@
+{
+  "methodology": "Repeated logged-in ChatGPT consumer-UI sampling",
+  "instrument": "consumer-ui",
+  "provider": "chatgpt",
+  "targetBrand": "MailerLite",
+  "prompt": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+  "generatedAt": "2026-09-18T21:29:18.865Z",
+  "validTrials": 5,
+  "failedTrials": 0,
+  "presence": {
+    "hits": 5,
+    "n": 5,
+    "rate": 1,
+    "confidenceInterval": {
+      "level": 0.95,
+      "method": "Wilson",
+      "low": 0.5655175352168251,
+      "high": 1
+    }
+  },
+  "trials": [
+    {
+      "capturedAt": "2026-09-18T21:25:47.365Z",
+      "targetMentioned": true,
+      "response": "**MailerLite** is a good example of an all-in-one platform that combines:\n\n-   Email newsletters/campaigns\n    \n-   Visual email automation\n    \n-   Landing pages\n    \n-   Embedded signup forms and pop-ups\n    \n-   Subscriber segmentation and management\n    \n\nMailerLite currently includes all four of those capabilities even on its free tier, although with usage limits. MailerLite+1\n\n**Brevo** and **Mailchimp** also cover most or all of these functions, but if your priority is having newsletters + automation + landing pages + forms in one relatively simple interface, **MailerLite is one of the clearest fits**. Brevo Help+1",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:26:38.908Z",
+      "targetMentioned": true,
+      "response": "**MailerLite** is a strong match. It combines **email newsletters/campaigns, visual automations, landing pages, and signup forms/pop-ups** in one platform. Its current free plan includes 2,500 monthly emails, 3 visual automations, 1 landing page/website, and 3 signup forms/pop-ups. MailerLite+1\n\nTwo other all-in-one options are **Kit**, especially for creators, which includes newsletters, visual automations, forms, and landing pages, and **Brevo**, which combines email campaigns, automation, contact management, forms, and landing-page functionality. Kit+2Kit+2\n\nFor a **small business or beginner**, I’d put **MailerLite among the simplest choices** because all four features you named are built directly into the same product.",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:27:29.755Z",
+      "targetMentioned": true,
+      "response": "**MailerLite** is a strong example. It combines **email newsletters, automated email workflows, landing pages, and signup forms/pop-ups** in one platform. MailerLite+1\n\nIt also offers a free plan with limited versions of those features, making it particularly suitable for small businesses, creators, and beginners. MailerLite\n\nOther platforms that combine most or all of these functions include **Brevo, Mailchimp, Kit, and GetResponse**, but MailerLite is one of the more straightforward all-in-one options.",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:28:26.740Z",
+      "targetMentioned": true,
+      "response": "**MailerLite** is a strong fit. It combines **email newsletters, visual automation workflows, landing pages, and signup forms/pop-ups** in one platform. MailerLite+1\n\nIt also has a free plan that currently includes **2,500 monthly emails, 3 visual automations, 1 landing page, and 3 signup forms/pop-ups**, making it practical for a small business or someone starting out. MailerLite\n\nIf you want one simple all-in-one tool rather than stitching several services together, **MailerLite is one of the clearest choices**.",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:29:17.703Z",
+      "targetMentioned": true,
+      "response": "**MailerLite** is a strong fit for exactly that combination. It includes **email newsletters/campaigns, visual email automation, landing pages, and signup forms/pop-ups** in one platform. MailerLite+1\n\nIt’s particularly suitable for small businesses and beginners because the interface is relatively simple, while still giving you workflows, segmentation, A/B testing, subscriber management, and reporting. Its current free plan includes campaigns, up to **3 visual automations, 1 landing page, and 3 signup forms/pop-ups**; paid plans expand those limits. MailerLite+1\n\nSo if your requirement is essentially **newsletter + automation + lead-capture page + signup form without stitching several tools together**, **MailerLite is one of the clearest all-in-one options**.",
+      "sources": []
+    }
+  ],
+  "failures": []
+}

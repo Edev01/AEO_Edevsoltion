@@ -1,0 +1,64 @@
+$ aeo-tracker init --yes --brand=Webappski --domain=webappski.com --auto
+
+@webappski/aeo-tracker — init
+
+Checking environment for API keys...
+  Standard names not set
+
+  Heuristic match — these look like API keys under non-standard names:
+    ? OpenAI (ChatGPT): OPENAI_API_KEY_DEV
+    ? Google (Gemini): GEMINI_API_KEY_DEV
+    ? Anthropic (Claude): ANTHROPIC_API_KEY_DEV
+
+Configured providers: OpenAI (ChatGPT), Google (Gemini), Anthropic (Claude)
+
+Auto-suggest will:
+  1. Fetch https://webappski.com from your machine
+  2. Extract title, meta, headings, first 2KB of body text
+  3. Run the research pipeline (brainstorm → filter → score → validate → simulate)
+     via YOUR API keys (priority: OpenAI → Gemini → Anthropic)
+  4. Show you the suggested queries before saving
+  Your API keys never leave this machine. No telemetry. No analytics.
+
+  Fetching https://webappski.com... (164,613 bytes, via https://webappski.com/en)
+  [brainstorm → filter → score → validate]
+
+  [brainstorm] started
+  [brainstorm] attempt
+  [brainstorm] done (20)
+  [filter] started
+  [filter] done kept=20 rejected=0
+  [score] started
+  [score] done topScore=95
+  [validate] started via Google (Gemini)
+  [validate] done
+  [simulate] started
+  [simulate] done passed=14 rejected=1
+
+  pipeline cost ~$0.0057
+
+Selected queries (1 per intent bucket):
+  commercial     score=95 high
+    → best Answer Engine Optimization agencies 2026
+  vertical       score=90 high
+    → Answer Engine Optimization agency for B2B software
+  problem        score=90 high [fallback from commercial]
+    → enterprise Answer Engine Optimization service providers
+
+Alternatives (for swap):
+  [90] commercial     (validated) best Answer Engine Optimization consultants for startups
+  [90] vertical       (validated) Answer Engine Optimization for healthcare companies
+  [90] vertical       (validated) Answer Engine Optimization for financial technology startups
+  [90] vertical       (validated) Answer Engine Optimization for ecommerce brands
+  [90] vertical       (validated) Answer Engine Optimization for legal software firms
+
+Warnings:
+  ⚠ problem: no candidate in primary bucket, used fallback from "commercial"
+  Validating queries via OpenAI (ChatGPT)... ($0.0019)
+  ✓ All queries pass validation
+
+✓ Created .aeo-tracker.json
+  Brand: Webappski | Domain: webappski.com
+  Queries: 3, Providers: 3
+
+Next: aeo-tracker run

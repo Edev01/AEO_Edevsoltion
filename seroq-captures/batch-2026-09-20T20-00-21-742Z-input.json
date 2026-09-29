@@ -1,0 +1,78 @@
+{
+  "targetBrand": "Initor Global",
+  "prompts": [
+    {
+      "queryId": "q_0f978621dc59",
+      "queryText": "What are the best outsourced accounting services for UK accounting firms?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_81564228daf9",
+      "queryText": "Which accounting outsourcing companies specialize in supporting UK accountancy practices?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_ba7c1ff40c25",
+      "queryText": "Can I outsource bookkeeping, payroll, VAT returns and year-end accounts to one provider?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_fd700067ea64",
+      "queryText": "How can an accounting practice outsource work during busy periods without hiring permanent staff?",
+      "tags": [
+        "problem",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_be6c946085f6",
+      "queryText": "What should I look for when choosing an offshore accounting outsourcing company?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_4dbbfcad3e9a",
+      "queryText": "Which outsourced accounting providers offer dedicated full-time accountants for UK firms?",
+      "tags": [
+        "purchase",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_e1e3fd30d965",
+      "queryText": "How much does outsourced accounting cost compared with hiring an accountant in-house in the UK?",
+      "tags": [
+        "comparison",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_5a9ad11e7351",
+      "queryText": "Which accounting outsourcing companies are GDPR compliant and ISO 27001 accredited?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_dfcc9522a43d",
+      "queryText": "Which outsourced accounting providers work with Xero, Sage and QuickBooks?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    }
+  ],
+  "trialsPerJourney": 5
+}

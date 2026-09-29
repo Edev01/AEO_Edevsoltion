@@ -1,0 +1,787 @@
+"use client";
+
+import {
+  useMemo,
+} from "react";
+
+import {
+  classifyRecommendation,
+} from "@/lib/seroq/intelligence/recommendation-core.mjs";
+
+import type {
+  RecommendationLabel,
+} from "@/lib/seroq/intelligence/recommendation-core.mjs";
+
+
+type TrialLike = {
+  provider?: string;
+  capturedAt?: string;
+  response?: string;
+};
+
+
+type ResultLike = {
+  queryId: string;
+  queryText: string;
+  trials?: TrialLike[];
+};
+
+
+type ReportLike = {
+  targetBrand: string;
+  results: ResultLike[];
+};
+
+
+type Props = {
+  report: ReportLike;
+};
+
+
+const RECOMMENDED_LABELS =
+  new Set<RecommendationLabel>([
+    "PRIMARY_RECOMMENDATION",
+    "SHORTLISTED",
+    "COMPARISON_OR_QUALIFIED",
+  ]);
+
+
+function pct(
+  numerator: number,
+  denominator: number,
+) {
+  if (
+    denominator <=
+    0
+  ) {
+    return "UNKNOWN";
+  }
+
+  return `${(
+    numerator /
+    denominator *
+    100
+  ).toFixed(
+    1,
+  )}%`;
+}
+
+
+function displayLabel(
+  value: RecommendationLabel,
+) {
+  const labels:
+    Record<
+      RecommendationLabel,
+      string
+    > = {
+      PRIMARY_RECOMMENDATION:
+        "Primary recommendation",
+      SHORTLISTED:
+        "Shortlisted",
+      ORDINARY_MENTION:
+        "Ordinary mention",
+      COMPARISON_OR_QUALIFIED:
+        "Qualified / conditional",
+      CAUTIONARY:
+        "Cautionary",
+      NEGATIVE:
+        "Negative",
+      ABSENT:
+        "Absent",
+      UNCLASSIFIED:
+        "Unclassified",
+    };
+
+  return labels[
+    value
+  ];
+}
+
+
+export function RecommendationIntelligencePanel(
+  {
+    report,
+  }: Props,
+) {
+  const analysis =
+    useMemo(
+      () => {
+        const rows =
+          report.results.flatMap(
+            (
+              result,
+            ) =>
+              (
+                result.trials ??
+                []
+              ).map(
+                (
+                  trial,
+                  trialIndex,
+                ) => {
+                  const verdict =
+                    classifyRecommendation(
+                      {
+                        targetBrand:
+                          report.targetBrand,
+                        queryText:
+                          result.queryText,
+                        responseText:
+                          String(
+                            trial.response ??
+                            "",
+                          ),
+                      },
+                    );
+
+                  return {
+                    observationId:
+                      `${result.queryId}:${trial.provider ?? "unknown"}:${trial.capturedAt ?? trialIndex}:${trialIndex}`,
+                    queryId:
+                      result.queryId,
+                    queryText:
+                      result.queryText,
+                    provider:
+                      String(
+                        trial.provider ??
+                        "unknown",
+                      ),
+                    verdict,
+                  };
+                },
+              ),
+          );
+
+        const count =
+          (
+            label:
+              RecommendationLabel,
+          ) =>
+            rows.filter(
+              (
+                row,
+              ) =>
+                row.verdict.label ===
+                label,
+            ).length;
+
+        const recommended =
+          rows.filter(
+            (
+              row,
+            ) =>
+              RECOMMENDED_LABELS.has(
+                row.verdict.label,
+              ),
+          ).length;
+
+        const primary =
+          count(
+            "PRIMARY_RECOMMENDATION",
+          );
+
+        const mentioned =
+          rows.filter(
+            (
+              row,
+            ) =>
+              row.verdict.label !==
+                "ABSENT" &&
+              row.verdict.label !==
+                "UNCLASSIFIED",
+          ).length;
+
+        const byJourney =
+          report.results.map(
+            (
+              result,
+            ) => {
+              const journeyRows =
+                rows.filter(
+                  (
+                    row,
+                  ) =>
+                    row.queryId ===
+                    result.queryId,
+                );
+
+              const localCount =
+                (
+                  label:
+                    RecommendationLabel,
+                ) =>
+                  journeyRows.filter(
+                    (
+                      row,
+                    ) =>
+                      row.verdict.label ===
+                      label,
+                  ).length;
+
+              const recommendationIncluded =
+                journeyRows.filter(
+                  (
+                    row,
+                  ) =>
+                    RECOMMENDED_LABELS.has(
+                      row.verdict.label,
+                    ),
+                ).length;
+
+              return {
+                queryId:
+                  result.queryId,
+                queryText:
+                  result.queryText,
+                n:
+                  journeyRows.length,
+                primary:
+                  localCount(
+                    "PRIMARY_RECOMMENDATION",
+                  ),
+                shortlisted:
+                  localCount(
+                    "SHORTLISTED",
+                  ),
+                qualified:
+                  localCount(
+                    "COMPARISON_OR_QUALIFIED",
+                  ),
+                ordinary:
+                  localCount(
+                    "ORDINARY_MENTION",
+                  ),
+                absent:
+                  localCount(
+                    "ABSENT",
+                  ),
+                recommendationIncluded,
+              };
+            },
+          );
+
+        const providers =
+          [
+            ...new Set(
+              rows.map(
+                (
+                  row,
+                ) =>
+                  row.provider,
+              ),
+            ),
+          ];
+
+        const byEngine =
+          providers.map(
+            (
+              provider,
+            ) => {
+              const engineRows =
+                rows.filter(
+                  (
+                    row,
+                  ) =>
+                    row.provider ===
+                    provider,
+                );
+
+              return {
+                provider,
+                n:
+                  engineRows.length,
+                primary:
+                  engineRows.filter(
+                    (
+                      row,
+                    ) =>
+                      row.verdict.label ===
+                      "PRIMARY_RECOMMENDATION",
+                  ).length,
+                recommended:
+                  engineRows.filter(
+                    (
+                      row,
+                    ) =>
+                      RECOMMENDED_LABELS.has(
+                        row.verdict.label,
+                      ),
+                  ).length,
+                ordinary:
+                  engineRows.filter(
+                    (
+                      row,
+                    ) =>
+                      row.verdict.label ===
+                      "ORDINARY_MENTION",
+                  ).length,
+                absent:
+                  engineRows.filter(
+                    (
+                      row,
+                    ) =>
+                      row.verdict.label ===
+                      "ABSENT",
+                  ).length,
+              };
+            },
+          );
+
+        const distribution =
+          [
+            "PRIMARY_RECOMMENDATION",
+            "SHORTLISTED",
+            "COMPARISON_OR_QUALIFIED",
+            "ORDINARY_MENTION",
+            "CAUTIONARY",
+            "NEGATIVE",
+            "ABSENT",
+            "UNCLASSIFIED",
+          ].map(
+            (
+              label,
+            ) => ({
+              label:
+                label as
+                  RecommendationLabel,
+              count:
+                count(
+                  label as
+                    RecommendationLabel,
+                ),
+            }),
+          );
+
+        return {
+          rows,
+          n:
+            rows.length,
+          mentioned,
+          recommended,
+          primary,
+          byJourney,
+          byEngine,
+          distribution,
+        };
+      },
+      [
+        report,
+      ],
+    );
+
+  if (
+    analysis.n ===
+    0
+  ) {
+    return null;
+  }
+
+  return (
+    <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+
+      <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+        Recommendation Intelligence
+      </div>
+
+      <h2 className="mt-3 text-2xl font-semibold">
+        What does AI do after mentioning the brand?
+      </h2>
+
+      <p className="mt-3 max-w-4xl text-sm leading-6 text-zinc-500 print:text-zinc-700">
+        Mentioning a brand is not the same as choosing it. Seroq classifies the role the target plays in each valid answer using deterministic recommendation-language and answer-structure rules. These are classified interpretations of observed answer text, not direct platform-provided labels.
+      </p>
+
+
+      <div className="mt-6 grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4 print:border print:border-zinc-300">
+
+        <Metric
+          label="Mentioned"
+          value={
+            `${analysis.mentioned}/${analysis.n}`
+          }
+          detail={
+            pct(
+              analysis.mentioned,
+              analysis.n,
+            )
+          }
+        />
+
+        <Metric
+          label="Recommendation inclusion"
+          value={
+            `${analysis.recommended}/${analysis.n}`
+          }
+          detail={
+            pct(
+              analysis.recommended,
+              analysis.n,
+            )
+          }
+        />
+
+        <Metric
+          label="Primary recommendation"
+          value={
+            `${analysis.primary}/${analysis.n}`
+          }
+          detail={
+            pct(
+              analysis.primary,
+              analysis.n,
+            )
+          }
+        />
+
+        <Metric
+          label="Not selected"
+          value={
+            String(
+              analysis.n -
+              analysis.recommended,
+            )
+          }
+          detail="ordinary mention or absent"
+        />
+
+      </div>
+
+
+      <div className="mt-8">
+
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+          By buyer journey
+        </div>
+
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/10 print:border-zinc-300">
+
+          <table className="w-full min-w-[900px] border-collapse text-left text-sm">
+
+            <thead className="bg-white/[0.03] text-[10px] uppercase tracking-[0.12em] text-zinc-500">
+              <tr>
+                <th className="px-4 py-3 font-semibold">
+                  Buyer journey
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  Primary
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  Included
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  Shortlisted
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  Qualified
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  Ordinary
+                </th>
+                <th className="px-4 py-3 font-semibold">
+                  Absent
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {
+                analysis.byJourney.map(
+                  (
+                    journey,
+                  ) => (
+                    <tr
+                      key={
+                        journey.queryId
+                      }
+                      className="border-t border-white/10 print:border-zinc-200"
+                    >
+                      <td className="max-w-lg px-4 py-4 font-medium">
+                        {
+                          journey.queryText
+                        }
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {
+                          journey.primary
+                        }
+                        /
+                        {
+                          journey.n
+                        }
+                        <div className="mt-1 text-[10px] text-zinc-500">
+                          {
+                            pct(
+                              journey.primary,
+                              journey.n,
+                            )
+                          }
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {
+                          journey.recommendationIncluded
+                        }
+                        /
+                        {
+                          journey.n
+                        }
+                        <div className="mt-1 text-[10px] text-zinc-500">
+                          {
+                            pct(
+                              journey.recommendationIncluded,
+                              journey.n,
+                            )
+                          }
+                        </div>
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {
+                          journey.shortlisted
+                        }
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {
+                          journey.qualified
+                        }
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {
+                          journey.ordinary
+                        }
+                      </td>
+
+                      <td className="px-4 py-4">
+                        {
+                          journey.absent
+                        }
+                      </td>
+                    </tr>
+                  ),
+                )
+              }
+            </tbody>
+
+          </table>
+
+        </div>
+
+      </div>
+
+
+      <div className="mt-8">
+
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+          By measured engine
+        </div>
+
+        <div className="mt-3 overflow-hidden rounded-2xl border border-white/10 print:border-zinc-300">
+
+          <div className="grid grid-cols-[1fr_110px_130px_120px_100px] border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500 print:border-zinc-300">
+            <div>
+              Engine
+            </div>
+            <div>
+              Valid n
+            </div>
+            <div>
+              Primary
+            </div>
+            <div>
+              Included
+            </div>
+            <div>
+              Not selected
+            </div>
+          </div>
+
+          {
+            analysis.byEngine.map(
+              (
+                engine,
+              ) => (
+                <div
+                  key={
+                    engine.provider
+                  }
+                  className="grid grid-cols-[1fr_110px_130px_120px_100px] border-b border-white/10 px-4 py-3 text-sm last:border-b-0 print:border-zinc-200"
+                >
+                  <div className="capitalize">
+                    {
+                      engine.provider
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      engine.n
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      engine.primary
+                    }
+                    /
+                    {
+                      engine.n
+                    }
+                    {" | "}
+                    {
+                      pct(
+                        engine.primary,
+                        engine.n,
+                      )
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      engine.recommended
+                    }
+                    /
+                    {
+                      engine.n
+                    }
+                    {" | "}
+                    {
+                      pct(
+                        engine.recommended,
+                        engine.n,
+                      )
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      engine.ordinary +
+                      engine.absent
+                    }
+                  </div>
+                </div>
+              ),
+            )
+          }
+
+        </div>
+
+        <p className="mt-3 text-xs leading-5 text-zinc-600">
+          Engine rows describe only valid observations. A 1/1 result is one observation, not evidence of stable engine-wide behavior.
+        </p>
+
+      </div>
+
+
+      <div className="mt-8">
+
+        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+          Role distribution
+        </div>
+
+        <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          {
+            analysis.distribution
+              .filter(
+                (
+                  item,
+                ) =>
+                  item.count >
+                  0,
+              )
+              .map(
+                (
+                  item,
+                ) => (
+                  <div
+                    key={
+                      item.label
+                    }
+                    className="report-card rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+                  >
+                    <div className="text-[9px] font-semibold uppercase tracking-[0.12em] text-zinc-500">
+                      INFERRED
+                    </div>
+
+                    <div className="mt-2 text-sm font-medium">
+                      {
+                        displayLabel(
+                          item.label,
+                        )
+                      }
+                    </div>
+
+                    <div className="mt-1 text-xs text-zinc-500">
+                      {
+                        item.count
+                      }
+                      /
+                      {
+                        analysis.n
+                      }
+                      {" | "}
+                      {
+                        pct(
+                          item.count,
+                          analysis.n,
+                        )
+                      }
+                    </div>
+                  </div>
+                ),
+              )
+          }
+        </div>
+
+      </div>
+
+
+      <p className="mt-6 text-xs leading-5 text-zinc-600 print:text-zinc-700">
+        Validation note: the current deterministic baseline was evaluated against a manually labeled 31-observation MailerLite reference corpus before this panel was enabled. That corpus contains no real cautionary or negative MailerLite examples and is not evidence of general classifier accuracy across industries. Those classes require broader cross-brand validation before Seroq should make strong paid-report claims from them.
+      </p>
+
+    </section>
+  );
+}
+
+
+function Metric(
+  {
+    label,
+    value,
+    detail,
+  }: {
+    label:
+      string;
+    value:
+      string;
+    detail:
+      string;
+  },
+) {
+  return (
+    <div className="bg-[#0b0e11] p-5 print:bg-white">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        {
+          label
+        }
+      </div>
+
+      <div className="mt-2 text-xl font-semibold">
+        {
+          value
+        }
+      </div>
+
+      <div className="mt-1 text-xs text-zinc-500">
+        {
+          detail
+        }
+      </div>
+    </div>
+  );
+}

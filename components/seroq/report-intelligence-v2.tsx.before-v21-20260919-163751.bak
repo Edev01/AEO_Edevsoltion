@@ -1,0 +1,1230 @@
+﻿"use client";
+
+import {
+  useMemo,
+} from "react";
+
+import type {
+  AppState,
+} from "@/components/dashboard/types";
+
+import {
+  buildIntelligenceSummary,
+  extractObservation,
+} from "@/lib/seroq/intelligence";
+
+import type {
+  RawCitation,
+} from "@/lib/seroq/intelligence";
+
+import {
+  discoverStructuredBrandCandidates,
+} from "@/lib/seroq/intelligence/discover";
+
+
+type TrialLike = {
+
+  provider?:
+    string;
+
+  capturedAt?:
+    string;
+
+  response?:
+    string;
+
+  sources?:
+    unknown[];
+
+};
+
+
+type ResultLike = {
+
+  queryId:
+    string;
+
+  queryText:
+    string;
+
+  trials?:
+    TrialLike[];
+
+};
+
+
+type ReportLike = {
+
+  targetBrand:
+    string;
+
+  samplesPerJourney:
+    number;
+
+  providerCount?:
+    number;
+
+  attemptedProviderCount?:
+    number;
+
+  results:
+    ResultLike[];
+
+};
+
+
+type Props = {
+
+  state:
+    AppState;
+
+  report:
+    ReportLike;
+
+};
+
+
+function pct(
+  value:
+    number |
+    null |
+    undefined,
+) {
+
+  if (
+    value ===
+      null ||
+    value ===
+      undefined
+  ) {
+
+    return "UNKNOWN";
+
+  }
+
+
+  return `${(
+    value *
+    100
+  ).toFixed(
+    1,
+  )}%`;
+
+}
+
+
+function sourceToRawCitation(
+  source: unknown,
+): RawCitation | null {
+
+  if (
+    typeof source ===
+    "string"
+  ) {
+
+    const value =
+      source.trim();
+
+
+    return value
+      ? {
+          url:
+            value,
+        }
+      : null;
+
+  }
+
+
+  if (
+    !source ||
+    typeof source !==
+      "object"
+  ) {
+
+    return null;
+
+  }
+
+
+  const record =
+    source as
+      Record<
+        string,
+        unknown
+      >;
+
+
+  const urlValue =
+    record.url ??
+    record.href ??
+    record.link ??
+    record.source ??
+    "";
+
+
+  const domainValue =
+    record.domain ??
+    record.hostname ??
+    "";
+
+
+  const titleValue =
+    record.title ??
+    record.name ??
+    null;
+
+
+  const url =
+    typeof urlValue ===
+      "string"
+      ? urlValue
+      : "";
+
+
+  const domain =
+    typeof domainValue ===
+      "string"
+      ? domainValue
+      : "";
+
+
+  const title =
+    typeof titleValue ===
+      "string"
+      ? titleValue
+      : null;
+
+
+  if (
+    !url &&
+    !domain
+  ) {
+
+    return null;
+
+  }
+
+
+  return {
+
+    ...(url
+      ? {
+          url,
+        }
+      : {}),
+
+    ...(domain
+      ? {
+          domain,
+        }
+      : {}),
+
+    title,
+
+  };
+
+}
+
+
+function providerLabel(
+  provider: string,
+) {
+
+  const labels:
+    Record<
+      string,
+      string
+    > = {
+
+      chatgpt:
+        "ChatGPT",
+
+      perplexity:
+        "Perplexity",
+
+      gemini:
+        "Gemini",
+
+      claude:
+        "Claude",
+
+      "ai-overview":
+        "Google AI Overview",
+
+    };
+
+
+  if (
+    provider.startsWith(
+      "unavailable-engine-",
+    )
+  ) {
+
+    return "Unavailable attempted engine";
+
+  }
+
+
+  return (
+    labels[
+      provider
+    ] ??
+    provider
+  );
+
+}
+
+
+export function ReportIntelligenceV2(
+  {
+    state,
+    report,
+  }: Props,
+) {
+
+  const intelligence =
+    useMemo(
+      () => {
+
+        const allTrials =
+          report.results.flatMap(
+            (
+              result,
+            ) =>
+              (
+                result.trials ??
+                []
+              ).map(
+                (
+                  trial,
+                  trialIndex,
+                ) => ({
+
+                  result,
+
+                  trial,
+
+                  trialIndex,
+
+                }),
+              ),
+          );
+
+
+        const measuredProviders =
+          [
+            ...new Set<string>(
+              allTrials
+                .map(
+                  (
+                    {
+                      trial,
+                    },
+                  ) =>
+                    String(
+                      trial.provider ??
+                      "",
+                    ).trim(),
+                )
+                .filter(
+                  Boolean,
+                ),
+            ),
+          ];
+
+
+        const attemptedCount =
+          Math.max(
+
+            report
+              .attemptedProviderCount ??
+              measuredProviders.length,
+
+            measuredProviders.length,
+
+            1,
+
+          );
+
+
+        const expectedProviders =
+          [
+            ...measuredProviders,
+          ];
+
+
+        while (
+          expectedProviders.length <
+          attemptedCount
+        ) {
+
+          expectedProviders.push(
+            `unavailable-engine-${expectedProviders.length + 1}`,
+          );
+
+        }
+
+
+        /*
+         * First pass:
+         * conservatively discover brand-like names from recommendation
+         * tables/lists. An unknown name must recur across >=2 answers.
+         */
+        const discoveryCounts =
+          new Map<
+            string,
+            {
+              name:
+                string;
+
+              observations:
+                number;
+            }
+          >();
+
+
+        for (
+          const {
+            trial,
+          } of allTrials
+        ) {
+
+          const discovered =
+            discoverStructuredBrandCandidates(
+
+              String(
+                trial.response ??
+                "",
+              ),
+
+              report.targetBrand,
+
+            );
+
+
+          const perObservation =
+            new Set<string>(
+              discovered
+                .map(
+                  (
+                    name,
+                  ) =>
+                    String(
+                      name,
+                    ).trim(),
+                )
+                .filter(
+                  Boolean,
+                ),
+            );
+
+
+          for (
+            const name of
+              perObservation
+          ) {
+
+            const key =
+              name.toLowerCase();
+
+
+            const current =
+              discoveryCounts.get(
+                key,
+              ) ?? {
+
+                name,
+
+                observations:
+                  0,
+
+              };
+
+
+            current.observations +=
+              1;
+
+
+            discoveryCounts.set(
+              key,
+              current,
+            );
+
+          }
+
+        }
+
+
+        const configuredNames =
+          new Set<string>(
+            state.competitors.map(
+              (
+                competitor,
+              ) =>
+                competitor.name
+                  .toLowerCase(),
+            ),
+          );
+
+
+        const discoveredRecurring =
+          [
+            ...discoveryCounts.values(),
+          ]
+            .filter(
+              (
+                item,
+              ) =>
+                item.observations >=
+                2,
+            )
+            .filter(
+              (
+                item,
+              ) =>
+                !configuredNames.has(
+                  item.name.toLowerCase(),
+                ),
+            )
+            .map(
+              (
+                item,
+              ) =>
+                item.name,
+            );
+
+
+        const competitors =
+          [
+
+            ...state.competitors.map(
+              (
+                competitor,
+              ) => ({
+
+                canonicalName:
+                  competitor.name,
+
+                aliases:
+                  competitor.aliases ??
+                  [],
+
+                domain:
+                  competitor.websites?.[
+                    0
+                  ],
+
+                isTarget:
+                  false,
+
+              }),
+            ),
+
+
+            ...discoveredRecurring.map(
+              (
+                name,
+              ) => ({
+
+                canonicalName:
+                  name,
+
+                aliases:
+                  [],
+
+                isTarget:
+                  false,
+
+              }),
+            ),
+
+          ];
+
+
+        const targetAliases =
+          String(
+            state.brand
+              .brandAliases ??
+            "",
+          )
+            .split(
+              /[,;\n]/,
+            )
+            .map(
+              (
+                alias,
+              ) =>
+                alias.trim(),
+            )
+            .filter(
+              Boolean,
+            );
+
+
+        const observations =
+          allTrials.map(
+            (
+              {
+                result,
+                trial,
+                trialIndex,
+              },
+            ) =>
+              extractObservation({
+
+                observationId:
+                  `${result.queryId}:${trial.provider ?? "unknown"}:${trial.capturedAt ?? trialIndex}:${trialIndex}`,
+
+                queryId:
+                  result.queryId,
+
+                queryText:
+                  result.queryText,
+
+                provider:
+                  String(
+                    trial.provider ??
+                    "unknown",
+                  ),
+
+                capturedAt:
+                  String(
+                    trial.capturedAt ??
+                    "",
+                  ),
+
+                responseText:
+                  String(
+                    trial.response ??
+                    "",
+                  ),
+
+                citations:
+                  Array.isArray(
+                    trial.sources,
+                  )
+                    ? trial.sources
+                        .map(
+                          sourceToRawCitation,
+                        )
+                        .filter(
+                          (
+                            citation,
+                          ): citation is RawCitation =>
+                            citation !==
+                            null,
+                        )
+                    : [],
+
+                target: {
+
+                  canonicalName:
+                    report.targetBrand,
+
+                  aliases:
+                    targetAliases,
+
+                  domain:
+                    state.brand
+                      .websites?.[
+                        0
+                      ],
+
+                  isTarget:
+                    true,
+
+                },
+
+                competitors,
+
+              }),
+          );
+
+
+        const summary =
+          buildIntelligenceSummary(
+
+            observations,
+
+            {
+
+              targetBrand:
+                report.targetBrand,
+
+              expectedProviders,
+
+              queryIds:
+                report.results.map(
+                  (
+                    result,
+                  ) =>
+                    result.queryId,
+                ),
+
+              repetitionsPerProviderQuery:
+                report.samplesPerJourney,
+
+            },
+
+          );
+
+
+        return {
+
+          summary,
+
+          measuredProviders,
+
+          attemptedCount,
+
+          configuredNames,
+
+        };
+
+      },
+      [
+        report,
+        state,
+      ],
+    );
+
+
+  const {
+    summary,
+    measuredProviders,
+    attemptedCount,
+    configuredNames,
+  } =
+    intelligence;
+
+
+  const missingObservations =
+    Math.max(
+
+      0,
+
+      summary
+        .intendedObservations -
+      summary
+        .validObservations,
+
+    );
+
+
+  const recurringBrands =
+    summary.competitors.filter(
+      (
+        competitor,
+      ) =>
+        competitor
+          .observationCount >=
+        2,
+    );
+
+
+  const topSources =
+    summary.sources.slice(
+      0,
+      8,
+    );
+
+
+  return (
+    <>
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Measurement Integrity
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          How complete is this measurement?
+        </h2>
+
+
+        <div className="mt-6 grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4 print:border print:border-zinc-300">
+
+          <MiniMetric
+            label="Planned observations"
+            value={
+              String(
+                summary.intendedObservations,
+              )
+            }
+          />
+
+          <MiniMetric
+            label="Valid observations"
+            value={
+              String(
+                summary.validObservations,
+              )
+            }
+          />
+
+          <MiniMetric
+            label="Measurement coverage"
+            value={
+              pct(
+                summary.measurementCoverage,
+              )
+            }
+          />
+
+          <MiniMetric
+            label="Unmeasured"
+            value={
+              String(
+                missingObservations,
+              )
+            }
+          />
+
+        </div>
+
+
+        <p className="mt-4 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          Presence and citation rates use valid observations only. Coverage uses the full planned grid, so failed or skipped browser observations remain visible as missing measurement rather than becoming false zeroes.
+        </p>
+
+
+        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 print:border-zinc-300">
+
+          <div className="grid grid-cols-[1fr_100px_100px_100px] border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500 print:border-zinc-300">
+
+            <div>
+              AI engine
+            </div>
+
+            <div>
+              Coverage
+            </div>
+
+            <div>
+              Mention
+            </div>
+
+            <div>
+              Own-site cite
+            </div>
+
+          </div>
+
+
+          {
+            summary.engineMetrics.map(
+              (
+                engine,
+              ) => (
+
+                <div
+                  key={
+                    String(
+                      engine.provider,
+                    )
+                  }
+                  className="grid grid-cols-[1fr_100px_100px_100px] border-b border-white/10 px-4 py-3 text-sm last:border-b-0 print:border-zinc-200"
+                >
+
+                  <div>
+                    {
+                      providerLabel(
+                        String(
+                          engine.provider,
+                        ),
+                      )
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      engine.validObservations
+                    }
+                    /
+                    {
+                      engine.expectedObservations
+                    }
+                    {" · "}
+                    {
+                      pct(
+                        engine.coverageRate,
+                      )
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      pct(
+                        engine.mentionRate,
+                      )
+                    }
+                  </div>
+
+                  <div>
+                    {
+                      pct(
+                        engine.citationRate,
+                      )
+                    }
+                  </div>
+
+                </div>
+
+              ),
+            )
+          }
+
+        </div>
+
+
+        <div className="mt-3 text-xs text-zinc-600">
+          Engines with valid output: {
+            measuredProviders.length
+          }/{attemptedCount} attempted.
+        </div>
+
+      </section>
+
+
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Visibility State
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Mentioning the brand and citing the brand are different outcomes
+        </h2>
+
+
+        <div className="mt-6 grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4 print:border print:border-zinc-300">
+
+          <MiniMetric
+            label="Named + own site cited"
+            value={
+              String(
+                summary
+                  .visibilityStateMix
+                  .full_visibility,
+              )
+            }
+          />
+
+          <MiniMetric
+            label="Named only"
+            value={
+              String(
+                summary
+                  .visibilityStateMix
+                  .mention_only,
+              )
+            }
+          />
+
+          <MiniMetric
+            label="Own site cited only"
+            value={
+              String(
+                summary
+                  .visibilityStateMix
+                  .citation_only,
+              )
+            }
+          />
+
+          <MiniMetric
+            label="Invisible"
+            value={
+              String(
+                summary
+                  .visibilityStateMix
+                  .invisible,
+              )
+            }
+          />
+
+        </div>
+
+
+        <div className="mt-4 text-sm text-zinc-500 print:text-zinc-700">
+
+          Target mention rate:{" "}
+
+          <strong className="text-zinc-300 print:text-black">
+            {
+              pct(
+                summary.targetMentionRate,
+              )
+            }
+          </strong>
+
+          {" · "}
+
+          Target own-domain citation rate:{" "}
+
+          <strong className="text-zinc-300 print:text-black">
+            {
+              pct(
+                summary.targetCitationRate,
+              )
+            }
+          </strong>
+
+        </div>
+
+      </section>
+
+
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Measured Competitive Landscape
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Brands that repeatedly appeared in the measured answers
+        </h2>
+
+
+        <p className="mt-3 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          These counts come from captured answer text. Configured market candidates are matched deterministically; additional names are promoted only when they recur in structured recommendation lists or tables across at least two observations.
+        </p>
+
+
+        <div className="mt-6 space-y-3">
+
+          {
+            recurringBrands.length >
+            0
+              ? recurringBrands
+                  .slice(
+                    0,
+                    10,
+                  )
+                  .map(
+                    (
+                      competitor,
+                    ) => {
+
+                      const configured =
+                        configuredNames.has(
+                          competitor.name
+                            .toLowerCase(),
+                        );
+
+
+                      return (
+
+                        <div
+                          key={
+                            competitor.name
+                          }
+                          className="report-card flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+                        >
+
+                          <div>
+
+                            <span className="mr-2 text-[9px] font-semibold uppercase tracking-wider text-emerald-300 print:text-black">
+                              OBSERVED
+                            </span>
+
+                            <span className="text-sm font-medium">
+                              {
+                                competitor.name
+                              }
+                            </span>
+
+                            {
+                              !configured
+                                ? (
+                                  <span className="ml-2 text-[9px] uppercase tracking-wider text-zinc-600">
+                                    auto-discovered
+                                  </span>
+                                )
+                                : null
+                            }
+
+                          </div>
+
+
+                          <div className="text-right text-xs text-zinc-500">
+
+                            <div>
+                              {
+                                competitor.observationCount
+                              }
+                              /
+                              {
+                                summary.validObservations
+                              } answers
+                            </div>
+
+                            <div>
+                              {
+                                pct(
+                                  competitor.mentionRate,
+                                )
+                              }
+                            </div>
+
+                          </div>
+
+                        </div>
+
+                      );
+
+                    },
+                  )
+              : (
+                <div className="text-sm text-zinc-500">
+                  No recurring alternative brand was detected confidently in the valid observations.
+                </div>
+              )
+          }
+
+        </div>
+
+      </section>
+
+
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Citation Intelligence
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Which domains recur as sources?
+        </h2>
+
+
+        {
+          topSources.length >
+          0
+            ? (
+
+              <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 print:border-zinc-300">
+
+                <div className="grid grid-cols-[1fr_120px_90px_90px] border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500 print:border-zinc-300">
+
+                  <div>
+                    Domain
+                  </div>
+
+                  <div>
+                    Type
+                  </div>
+
+                  <div>
+                    Journeys
+                  </div>
+
+                  <div>
+                    Engines
+                  </div>
+
+                </div>
+
+
+                {
+                  topSources.map(
+                    (
+                      source,
+                    ) => (
+
+                      <div
+                        key={
+                          source.domain
+                        }
+                        className="grid grid-cols-[1fr_120px_90px_90px] border-b border-white/10 px-4 py-3 text-sm last:border-b-0 print:border-zinc-200"
+                      >
+
+                        <div>
+                          {
+                            source.domain
+                          }
+                        </div>
+
+                        <div className="text-xs text-zinc-500">
+                          {
+                            source.category
+                              .replaceAll(
+                                "_",
+                                " ",
+                              )
+                          }
+                        </div>
+
+                        <div>
+                          {
+                            source.queryCount
+                          }
+                        </div>
+
+                        <div>
+                          {
+                            source.engineCount
+                          }
+                        </div>
+
+                      </div>
+
+                    ),
+                  )
+                }
+
+              </div>
+
+            )
+            : (
+
+              <p className="mt-5 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+                No structured source URLs were captured reliably in this batch. Seroq leaves citation intelligence unmeasured instead of inventing source influence.
+              </p>
+
+            )
+        }
+
+      </section>
+
+    </>
+  );
+
+}
+
+
+function MiniMetric(
+  {
+    label,
+    value,
+  }: {
+    label:
+      string;
+
+    value:
+      string;
+  },
+) {
+
+  return (
+
+    <div className="bg-[#0b0e11] p-5 print:bg-white">
+
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        {label}
+      </div>
+
+      <div className="mt-2 text-xl font-semibold">
+        {value}
+      </div>
+
+    </div>
+
+  );
+
+}

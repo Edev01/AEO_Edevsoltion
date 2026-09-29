@@ -1,0 +1,55 @@
+﻿
+> llm-tracker@1.5.0 build
+> next build
+
+Γû▓ Next.js 16.2.9 (Turbopack)
+- Environments: .env.local
+
+  Creating an optimized production build ...
+Γ£ô Compiled successfully in 12.1s
+  Running TypeScript ...
+  Finished TypeScript in 15.6s ...
+  Collecting page data using 3 workers ...
+  Generating static pages using 3 workers (0/16) ...
+  Generating static pages using 3 workers (4/16) 
+  Generating static pages using 3 workers (8/16) 
+  Generating static pages using 3 workers (12/16) 
+Γ£ô Generating static pages using 3 workers (16/16) in 624ms
+  Finalizing page optimization ...
+
+Route (app)
+Γöî Γùï /
+Γö£ Γùï /_not-found
+Γö£ ╞Æ /api/analyze
+Γö£ ╞Æ /api/audit
+Γö£ ╞Æ /api/brightdata-platforms
+Γö£ ╞Æ /api/bulk-sro
+Γö£ ╞Æ /api/geo-audit
+Γö£ ╞Æ /api/scrape
+Γö£ ╞Æ /api/seroq/buyer-audit
+Γö£ ╞Æ /api/seroq/captures
+Γö£ ╞Æ /api/seroq/competitive
+Γö£ ╞Æ /api/seroq/full-scan
+Γö£ ╞Æ /api/seroq/measure
+Γö£ ╞Æ /api/seroq/measurement/latest
+Γö£ ╞Æ /api/seroq/onboard
+Γö£ ╞Æ /api/seroq/proof/refresh
+Γö£ ╞Æ /api/seroq/remeasure
+Γö£ ╞Æ /api/seroq/report/latest
+Γö£ ╞Æ /api/seroq/why
+Γö£ ╞Æ /api/serp
+Γö£ ╞Æ /api/site-context
+Γö£ ╞Æ /api/sro-analyze
+Γö£ ╞Æ /api/state
+Γö£ ╞Æ /api/unlocker
+Γö£ Γùï /dashboard
+Γö£ Γùï /demo
+Γö£ ╞Æ /evidence
+Γöö Γùï /report
+
+
+╞Æ Proxy (Middleware)
+
+Γùï  (Static)   prerendered as static content
+╞Æ  (Dynamic)  server-rendered on demand
+

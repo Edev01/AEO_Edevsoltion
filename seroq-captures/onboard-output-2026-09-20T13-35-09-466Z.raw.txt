@@ -1,0 +1,211 @@
+{
+
+"brandName": "Swenta Global",
+
+"aliases": \["Swenta", "SwentaGlobal"\],
+
+"industry": "Accounting, tax, audit, business advisory and technology consulting services",
+
+"offerSummary": "Swenta Global provides accounting, tax, audit and assurance, financial advisory, business process outsourcing, technology consulting, ERP implementation, and transaction advisory services to businesses.",
+
+"geography": {
+
+"value": "United Kingdom, United Arab Emirates, Saudi Arabia, Pakistan, and wider MENA markets",
+
+"evidenceStatus": "OBSERVED"
+
+},
+
+"competitors": \[
+
+{
+
+"name": "RSM UK",
+
+"reason": "Candidate competitor offering accounting, tax, audit, transaction and business advisory services to UK businesses."
+
+},
+
+{
+
+"name": "BDO UK",
+
+"reason": "Candidate competitor with overlapping audit, tax, outsourcing and advisory services."
+
+},
+
+{
+
+"name": "Grant Thornton UK",
+
+"reason": "Candidate competitor serving businesses with audit, tax, advisory and transaction services."
+
+},
+
+{
+
+"name": "Forvis Mazars",
+
+"reason": "Candidate competitor offering audit, accounting, tax and consulting services across multiple international markets."
+
+},
+
+{
+
+"name": "Azets",
+
+"reason": "Candidate competitor focused on accounting, tax, advisory and outsourced finance services for UK SMEs and mid-market businesses."
+
+},
+
+{
+
+"name": "PKF",
+
+"reason": "Candidate competitor providing audit, tax, accounting and advisory services through an international network."
+
+},
+
+{
+
+"name": "Crowe",
+
+"reason": "Candidate competitor with audit, tax, risk and business advisory capabilities across international markets."
+
+},
+
+{
+
+"name": "Moore Global",
+
+"reason": "Candidate competitor whose member firms provide accounting, audit, tax and consulting services internationally."
+
+}
+
+\],
+
+"buyerJourneys": \[
+
+{
+
+"query": "What are the best accounting and advisory firms for a growing UK business?",
+
+"intent": "discovery",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which firms can handle accounting, tax and business advisory under one roof?",
+
+"intent": "solution",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "What is the best outsourced finance and accounting provider for an SME?",
+
+"intent": "discovery",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which consulting firms can help a company implement an ERP system?",
+
+"intent": "solution",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Who can help reduce tax risk for a business operating across multiple countries?",
+
+"intent": "problem",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which accounting firms provide both statutory audit and financial advisory services?",
+
+"intent": "comparison",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Should a growing company outsource bookkeeping and finance operations or hire an in-house team?",
+
+"intent": "decision",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which firms provide internal controls and risk advisory services for businesses?",
+
+"intent": "solution",
+
+"commercialValue": "medium"
+
+},
+
+{
+
+"query": "How do I choose a tax and accounting adviser for a UK SME?",
+
+"intent": "decision",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Who can advise a business on restructuring, transactions and financial reporting?",
+
+"intent": "purchase",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Is Swenta Global suitable for outsourced accounting, tax and advisory services?",
+
+"intent": "decision",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "How does Swenta Global compare with other accounting and advisory firms for growing businesses?",
+
+"intent": "comparison",
+
+"commercialValue": "high"
+
+}
+
+\]
+
+}

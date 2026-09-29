@@ -1,0 +1,640 @@
+﻿"use client";
+
+import { useMemo } from "react";
+
+import type { AppState } from "@/components/dashboard/types";
+import {
+  buildIntelligenceSummary,
+  extractObservation,
+  normalizeDomain,
+} from "@/lib/seroq/intelligence";
+import type { RawCitation } from "@/lib/seroq/intelligence";
+import { discoverStructuredBrandCandidates } from "@/lib/seroq/intelligence/discover";
+import { resolveCompetitorEntities } from "@/lib/seroq/intelligence/entity-resolver";
+
+type TrialLike = {
+  provider?: string;
+  capturedAt?: string;
+  response?: string;
+  sources?: unknown[];
+};
+
+type FailureLike = {
+  provider?: string;
+  capturedAt?: string;
+  error?: string;
+};
+
+type EngineBreakdownLike = {
+  provider: string;
+  validTrials: number;
+  failedTrials: number;
+  hits: number;
+  rate: number | null;
+};
+
+type ResultLike = {
+  queryId: string;
+  queryText: string;
+  trials?: TrialLike[];
+  failures?: FailureLike[];
+  engineBreakdown?: EngineBreakdownLike[];
+};
+
+type ReportLike = {
+  targetBrand: string;
+  samplesPerJourney: number;
+  providerCount?: number;
+  attemptedProviderCount?: number;
+  providers?: string[];
+  attemptedProviders?: string[];
+  results: ResultLike[];
+};
+
+type Props = {
+  state: AppState;
+  report: ReportLike;
+};
+
+function pct(value: number | null | undefined): string {
+  return value == null ? "UNKNOWN" : `${(value * 100).toFixed(1)}%`;
+}
+
+function sourceToRawCitation(source: unknown): RawCitation | null {
+  if (typeof source === "string") {
+    const value = source.trim();
+    return value ? { url: value } : null;
+  }
+
+  if (!source || typeof source !== "object") return null;
+
+  const record = source as Record<string, unknown>;
+  const urlValue = record.url ?? record.href ?? record.link ?? record.source ?? "";
+  const domainValue = record.domain ?? record.hostname ?? "";
+  const titleValue = record.title ?? record.name ?? null;
+
+  const url = typeof urlValue === "string" ? urlValue : "";
+  const domain = typeof domainValue === "string" ? domainValue : "";
+  const title = typeof titleValue === "string" ? titleValue : null;
+
+  if (!url && !domain) return null;
+
+  return {
+    ...(url ? { url } : {}),
+    ...(domain ? { domain } : {}),
+    title,
+  };
+}
+
+function providerLabel(provider: string): string {
+  const labels: Record<string, string> = {
+    chatgpt: "ChatGPT",
+    perplexity: "Perplexity",
+    gemini: "Gemini",
+    claude: "Claude",
+    "ai-overview": "Google AI Overview",
+  };
+
+  if (provider.startsWith("unavailable-engine-")) {
+    return "Unavailable attempted engine";
+  }
+
+  return labels[provider] ?? provider;
+}
+
+export function ReportIntelligenceV2({ state, report }: Props) {
+  const intelligence = useMemo(() => {
+    const allTrials = report.results.flatMap((result) =>
+      (result.trials ?? []).map((trial, trialIndex) => ({
+        result,
+        trial,
+        trialIndex,
+      })),
+    );
+
+    const allFailures = report.results.flatMap((result) =>
+      (result.failures ?? []).map((failure) => ({ result, failure })),
+    );
+
+    const providerNames = new Set<string>();
+
+    for (const provider of report.attemptedProviders ?? []) {
+      if (provider) providerNames.add(provider);
+    }
+
+    for (const provider of report.providers ?? []) {
+      if (provider) providerNames.add(provider);
+    }
+
+    for (const { trial } of allTrials) {
+      if (trial.provider) providerNames.add(trial.provider);
+    }
+
+    for (const { failure } of allFailures) {
+      if (failure.provider) providerNames.add(failure.provider);
+    }
+
+    for (const result of report.results) {
+      for (const row of result.engineBreakdown ?? []) {
+        if (row.provider) providerNames.add(row.provider);
+      }
+    }
+
+    const attemptedCount = Math.max(
+      report.attemptedProviderCount ?? providerNames.size,
+      providerNames.size,
+      1,
+    );
+
+    const expectedProviders = [...providerNames];
+    while (expectedProviders.length < attemptedCount) {
+      expectedProviders.push(`unavailable-engine-${expectedProviders.length + 1}`);
+    }
+
+    const discoveryCounts = new Map<
+      string,
+      { name: string; observations: number }
+    >();
+
+    for (const { trial } of allTrials) {
+      const discovered = discoverStructuredBrandCandidates(
+        String(trial.response ?? ""),
+        report.targetBrand,
+      );
+
+      for (const name of new Set(discovered)) {
+        const key = name.toLowerCase();
+        const current = discoveryCounts.get(key) ?? { name, observations: 0 };
+        current.observations += 1;
+        discoveryCounts.set(key, current);
+      }
+    }
+
+    const configuredNames = new Set(
+      state.competitors.map((competitor) => competitor.name.toLowerCase()),
+    );
+
+    const discoveredRecurring = [...discoveryCounts.values()]
+      .filter((item) => item.observations >= 2)
+      .filter((item) => !configuredNames.has(item.name.toLowerCase()))
+      .map((item) => item.name);
+
+    const rawCitationDomains = allTrials
+      .flatMap(({ trial }) => (Array.isArray(trial.sources) ? trial.sources : []))
+      .map(sourceToRawCitation)
+      .filter((citation): citation is RawCitation => citation !== null)
+      .map((citation) => normalizeDomain(citation.domain || citation.url))
+      .filter(Boolean);
+
+    const resolution = resolveCompetitorEntities({
+      configured: state.competitors,
+      discovered: discoveredRecurring,
+      evidenceTexts: allTrials.map(({ trial }) => String(trial.response ?? "")),
+      observedCitationDomains: rawCitationDomains,
+    });
+
+    const targetAliases = String(state.brand.brandAliases ?? "")
+      .split(/[,;\n]/)
+      .map((alias) => alias.trim())
+      .filter(Boolean);
+
+    const observations = allTrials.map(({ result, trial, trialIndex }) =>
+      extractObservation({
+        observationId: `${result.queryId}:${trial.provider ?? "unknown"}:${trial.capturedAt ?? trialIndex}:${trialIndex}`,
+        queryId: result.queryId,
+        queryText: result.queryText,
+        provider: String(trial.provider ?? "unknown"),
+        capturedAt: String(trial.capturedAt ?? ""),
+        responseText: String(trial.response ?? ""),
+        citations: Array.isArray(trial.sources)
+          ? trial.sources
+              .map(sourceToRawCitation)
+              .filter((citation): citation is RawCitation => citation !== null)
+          : [],
+        target: {
+          canonicalName: report.targetBrand,
+          aliases: targetAliases,
+          domain: state.brand.websites?.[0],
+          isTarget: true,
+        },
+        competitors: resolution.competitors,
+      }),
+    );
+
+    const summary = buildIntelligenceSummary(observations, {
+      targetBrand: report.targetBrand,
+      expectedProviders,
+      queryIds: report.results.map((result) => result.queryId),
+      repetitionsPerProviderQuery: report.samplesPerJourney,
+    });
+
+    const adequatelySampledEngines = summary.engineMetrics.filter(
+      (engine) =>
+        engine.coverageRate != null &&
+        engine.coverageRate >= 0.8 &&
+        engine.mentionRate != null,
+    );
+
+    const balancedMentionRate =
+      adequatelySampledEngines.length > 0
+        ? adequatelySampledEngines.reduce(
+            (sum, engine) => sum + (engine.mentionRate ?? 0),
+            0,
+          ) / adequatelySampledEngines.length
+        : null;
+
+    const missingObservations = Math.max(
+      0,
+      summary.intendedObservations - summary.validObservations,
+    );
+
+    const missingDataLowerBound =
+      summary.intendedObservations > 0
+        ? summary.targetMentionObservations / summary.intendedObservations
+        : null;
+
+    const missingDataUpperBound =
+      summary.intendedObservations > 0
+        ? (summary.targetMentionObservations + missingObservations) /
+          summary.intendedObservations
+        : null;
+
+    const competitorDetails = summary.competitors.map((competitor) => {
+      const matching = observations.filter((observation) =>
+        observation.mentions.some(
+          (mention) =>
+            !mention.isTarget && mention.canonicalName === competitor.name,
+        ),
+      );
+
+      return {
+        ...competitor,
+        journeyCount: new Set(matching.map((observation) => observation.queryId)).size,
+        engineCount: new Set(matching.map((observation) => observation.provider)).size,
+      };
+    });
+
+    return {
+      summary,
+      expectedProviders,
+      attemptedCount,
+      adequatelySampledEngines,
+      balancedMentionRate,
+      missingObservations,
+      missingDataLowerBound,
+      missingDataUpperBound,
+      competitorDetails,
+      resolution,
+    };
+  }, [report, state]);
+
+  const {
+    summary,
+    expectedProviders,
+    attemptedCount,
+    adequatelySampledEngines,
+    balancedMentionRate,
+    missingObservations,
+    missingDataLowerBound,
+    missingDataUpperBound,
+    competitorDetails,
+    resolution,
+  } = intelligence;
+
+  const recurringBrands = competitorDetails.filter(
+    (competitor) => competitor.observationCount >= 2,
+  );
+
+  const topSources = summary.sources.slice(0, 10);
+
+  const validEngineCount =
+    summary.engineMetrics.filter(
+      (engine) =>
+        engine.validObservations >
+        0,
+    ).length;
+
+  return (
+    <>
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Measurement Integrity
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          How complete and balanced is this measurement?
+        </h2>
+
+        <div className="mt-6 grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4 print:border print:border-zinc-300">
+          <MiniMetric label="Planned observations" value={String(summary.intendedObservations)} />
+          <MiniMetric label="Valid observations" value={String(summary.validObservations)} />
+          <MiniMetric label="Measurement coverage" value={pct(summary.measurementCoverage)} />
+          <MiniMetric label="Unmeasured" value={String(missingObservations)} />
+        </div>
+
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          <div className="report-card rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              Engine-balanced view
+            </div>
+            <div className="mt-2 text-xl font-semibold">
+              {pct(balancedMentionRate)}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-zinc-500 print:text-zinc-700">
+              Mean mention rate across {adequatelySampledEngines.length} engine
+              {adequatelySampledEngines.length === 1 ? "" : "s"} with at least 80% measurement coverage.
+              Under-sampled engines are not allowed to carry equal analytical weight.
+            </p>
+          </div>
+
+          <div className="report-card rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">
+              Missing-data sensitivity
+            </div>
+            <div className="mt-2 text-xl font-semibold">
+              {pct(missingDataLowerBound)} - {pct(missingDataUpperBound)}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-zinc-500 print:text-zinc-700">
+              Mechanical bounds only: the lower edge treats every unmeasured observation as absent;
+              the upper edge treats every unmeasured observation as a mention. This is not a confidence interval.
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 print:border-zinc-300">
+          <div className="grid grid-cols-[1fr_110px_110px_130px] border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500 print:border-zinc-300">
+            <div>AI engine</div>
+            <div>Coverage</div>
+            <div>Mention</div>
+            <div>Own-domain source matches</div>
+          </div>
+
+          {summary.engineMetrics.map((engine) => (
+            <div
+              key={String(engine.provider)}
+              className="grid grid-cols-[1fr_110px_110px_130px] border-b border-white/10 px-4 py-3 text-sm last:border-b-0 print:border-zinc-200"
+            >
+              <div>{providerLabel(String(engine.provider))}</div>
+              <div>
+                {engine.validObservations}/{engine.expectedObservations} | {pct(engine.coverageRate)}
+              </div>
+              <div>{pct(engine.mentionRate)}</div>
+              <div>{engine.targetCitationObservations}</div>
+            </div>
+          ))}
+        </div>
+
+        <p className="mt-4 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          {summary.validObservations}/{summary.intendedObservations} planned observations completed.
+          Mention metrics use valid observations only. The Wilson interval elsewhere in this report
+          describes uncertainty among those valid observations; it does not account for the{" "}
+          {missingObservations} unmeasured observations or engine imbalance.
+        </p>
+      </section>
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Buyer Journey x AI Engine
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Where is the brand consistently present - and where is measurement still incomplete?
+        </h2>
+
+        <div className="mt-6 overflow-x-auto rounded-2xl border border-white/10 print:border-zinc-300">
+          <table className="w-full min-w-[760px] border-collapse text-left text-sm">
+            <thead className="bg-white/[0.03] text-[10px] uppercase tracking-[0.12em] text-zinc-500">
+              <tr>
+                <th className="px-4 py-3 font-semibold">Buyer journey</th>
+                {expectedProviders.map((provider) => (
+                  <th key={provider} className="px-4 py-3 font-semibold">
+                    {providerLabel(provider)}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+
+            <tbody>
+              {report.results.map((result) => (
+                <tr key={result.queryId} className="border-t border-white/10 print:border-zinc-200">
+                  <td className="max-w-md px-4 py-4 font-medium">{result.queryText}</td>
+
+                  {expectedProviders.map((provider) => {
+                    const row = (result.engineBreakdown ?? []).find(
+                      (engine) => engine.provider === provider,
+                    );
+
+                    if (!row || row.validTrials <= 0) {
+                      return (
+                        <td key={provider} className="px-4 py-4 text-zinc-500">
+                          UNKNOWN
+                          <div className="mt-1 text-[10px]">
+                            0/{report.samplesPerJourney} measured
+                          </div>
+                        </td>
+                      );
+                    }
+
+                    return (
+                      <td key={provider} className="px-4 py-4">
+                        <div className="font-medium">
+                          {row.hits}/{row.validTrials} | {pct(row.rate)}
+                        </div>
+                        <div className="mt-1 text-[10px] text-zinc-500">
+                          {row.validTrials}/{report.samplesPerJourney} measured
+                        </div>
+                      </td>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Visibility State
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Being named and having the brand's site captured as a source are different observations
+        </h2>
+
+        <div className="mt-6 grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4 print:border print:border-zinc-300">
+          <MiniMetric
+            label="Named + own-domain source"
+            value={String(summary.visibilityStateMix.full_visibility)}
+          />
+          <MiniMetric label="Named only" value={String(summary.visibilityStateMix.mention_only)} />
+          <MiniMetric
+            label="Own-domain source only"
+            value={String(summary.visibilityStateMix.citation_only)}
+          />
+          <MiniMetric label="Not named" value={String(summary.visibilityStateMix.invisible)} />
+        </div>
+
+        <p className="mt-4 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          Observed target mentions:{" "}
+          <strong className="text-zinc-300 print:text-black">
+            {summary.targetMentionObservations}/{summary.validObservations} | {pct(summary.targetMentionRate)}
+          </strong>
+          . Observed own-domain matches in captured source data:{" "}
+          <strong className="text-zinc-300 print:text-black">
+            {summary.targetCitationObservations}
+          </strong>
+          . This legacy batch did not instrument source-extraction completeness separately,
+          so absence of a captured source is not treated as proof that an engine cited nothing.
+        </p>
+      </section>
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Measured Competitive Landscape
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Which alternatives recur across answers, journeys and engines?
+        </h2>
+
+        <p className="mt-3 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          Configured competitors are matched using their canonical names and aliases.
+          Additional names are promoted only after recurring in structured recommendation
+          lists or tables across at least two captured observations.
+        </p>
+
+        {resolution.mergedAliases.length > 0 ? (
+          <div className="mt-5 rounded-xl border border-emerald-300/20 bg-emerald-300/[0.04] p-4 text-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-300 print:text-black">
+              Verified alias resolution
+            </div>
+            {resolution.mergedAliases.map((item) => (
+              <div key={`${item.canonicalName}:${item.alias}`} className="mt-2 text-zinc-400 print:text-zinc-700">
+                <strong className="text-zinc-200 print:text-black">{item.alias}</strong>
+                {" -> "}
+                {item.canonicalName} | {item.evidence}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {resolution.possibleAliasCollisions.length > 0 ? (
+          <div className="mt-5 rounded-xl border border-amber-300/20 bg-amber-300/[0.04] p-4 text-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.12em] text-amber-300 print:text-black">
+              Possible entity collisions - not auto-merged
+            </div>
+            {resolution.possibleAliasCollisions.map((item) => (
+              <div key={`${item.left}:${item.right}`} className="mt-2 text-zinc-400 print:text-zinc-700">
+                {item.left} vs. {item.right} | {item.reason}
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        <div className="mt-6 space-y-3">
+          {recurringBrands.length > 0 ? (
+            recurringBrands.slice(0, 12).map((competitor) => (
+              <div
+                key={competitor.name}
+                className="report-card flex items-center justify-between gap-4 rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+              >
+                <div>
+                  <span className="mr-2 text-[9px] font-semibold uppercase tracking-wider text-emerald-300 print:text-black">
+                    OBSERVED
+                  </span>
+                  <span className="text-sm font-medium">{competitor.name}</span>
+                </div>
+
+                <div className="text-right text-xs text-zinc-500">
+                  <div>
+                    {competitor.observationCount}/{summary.validObservations} answers | {pct(competitor.mentionRate)}
+                  </div>
+                  <div className="mt-1">
+                    {competitor.journeyCount}/{report.results.length} journeys | {competitor.engineCount}/{validEngineCount} engines with valid data
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="text-sm text-zinc-500">
+              No recurring alternative brand was detected confidently in the valid observations.
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+        <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">
+          Citation Intelligence
+        </div>
+
+        <h2 className="mt-3 text-2xl font-semibold">
+          Which captured source domains recur?
+        </h2>
+
+        <p className="mt-3 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          Source categories are based on observed URLs plus configured or conservatively
+          inferred competitor domains. Domain inference is used only when the domain label
+          exactly matches a competitor name or alias after normalization.
+        </p>
+
+        {topSources.length > 0 ? (
+          <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 print:border-zinc-300">
+            <div className="grid grid-cols-[1fr_130px_90px_90px_100px] border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500 print:border-zinc-300">
+              <div>Domain</div>
+              <div>Type</div>
+              <div>Journeys</div>
+              <div>Engines</div>
+              <div>Answers</div>
+            </div>
+
+            {topSources.map((source) => (
+              <div
+                key={source.domain}
+                className="grid grid-cols-[1fr_130px_90px_90px_100px] border-b border-white/10 px-4 py-3 text-sm last:border-b-0 print:border-zinc-200"
+              >
+                <div>{source.domain}</div>
+                <div className="text-xs text-zinc-500">
+                  {source.category.replaceAll("_", " ")}
+                </div>
+                <div>{source.queryCount}</div>
+                <div>{source.engineCount}</div>
+                <div>{source.observationCount}</div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-5 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+            No structured source URLs were captured in this batch. Seroq leaves source
+            intelligence unmeasured rather than inventing source influence.
+          </p>
+        )}
+
+        {resolution.inferredDomains.some((item) => item.evidence === "NAME_DOMAIN_MATCH") ? (
+          <div className="mt-4 text-xs leading-5 text-zinc-600">
+            Competitor-domain matches inferred from captured sources:{" "}
+            {resolution.inferredDomains
+              .filter((item) => item.evidence === "NAME_DOMAIN_MATCH")
+              .map((item) => `${item.canonicalName} -> ${item.domain}`)
+              .join(" | ")}
+          </div>
+        ) : null}
+      </section>
+    </>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-[#0b0e11] p-5 print:bg-white">
+      <div className="text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-600">
+        {label}
+      </div>
+      <div className="mt-2 text-xl font-semibold">{value}</div>
+    </div>
+  );
+}
+
+
+

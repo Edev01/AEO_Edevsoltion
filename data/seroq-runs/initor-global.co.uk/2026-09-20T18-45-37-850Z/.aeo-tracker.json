@@ -1,0 +1,33 @@
+{
+  "brand": "Initor Global",
+  "domain": "initor-global.co.uk",
+  "brandAliases": [],
+  "queries": [
+    "What are the best outsourced accounting services for UK accountancy practices?",
+    "Which accounting outsourcing companies can handle bookkeeping, payroll, VAT and year-end accounts?",
+    "Should an accounting practice hire staff or outsource accounting work offshore?",
+    "How much does outsourced accounting cost for a UK accounting firm?",
+    "How can an accounting firm clear a bookkeeping and accounts preparation backlog?",
+    "Which outsourced accounting providers offer dedicated full-time accountants?",
+    "What should I look for when choosing an offshore accounting partner for a UK practice?",
+    "Are offshore accounting services safe and GDPR compliant for UK client data?",
+    "Which accounting outsourcing firms work with Xero, QuickBooks and Sage?",
+    "Can outsourced accountants scale up temporarily during tax season or periods of rapid growth?"
+  ],
+  "competitors": [
+    "QX Accounting Services",
+    "Doshi Outsourcing",
+    "AdvanceTrack Outsourcing",
+    "Global Integra",
+    "Fin-eX Outsourcing",
+    "CapActix Business Solutions"
+  ],
+  "regressionThreshold": 10,
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.8-flash",
+      "classifyModel": "gemini-3.1-flash-lite",
+      "env": "GEMINI_API_KEY"
+    }
+  }
+}

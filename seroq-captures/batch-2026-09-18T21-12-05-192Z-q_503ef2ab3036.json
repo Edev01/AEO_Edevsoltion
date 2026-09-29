@@ -1,0 +1,54 @@
+{
+  "methodology": "Repeated logged-in ChatGPT consumer-UI sampling",
+  "instrument": "consumer-ui",
+  "provider": "chatgpt",
+  "targetBrand": "MailerLite",
+  "prompt": "Which email marketing tool is easiest to use for a beginner?",
+  "generatedAt": "2026-09-18T21:24:26.040Z",
+  "validTrials": 5,
+  "failedTrials": 0,
+  "presence": {
+    "hits": 5,
+    "n": 5,
+    "rate": 1,
+    "confidenceInterval": {
+      "level": 0.95,
+      "method": "Wilson",
+      "low": 0.5655175352168251,
+      "high": 1
+    }
+  },
+  "trials": [
+    {
+      "capturedAt": "2026-09-18T21:20:33.620Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, **MailerLite is probably the easiest overall**. Its interface is deliberately simple, the drag-and-drop editor is straightforward, subscriber management isn’t overly complex, and its own onboarding is built around getting a first campaign running quickly. MailerLite\n\nI’d roughly frame the main options like this:\n\n| Tool | Beginner friendliness | Best fit |\n| --- | --- | --- |\n| **MailerLite** | ⭐⭐⭐⭐⭐ | Small businesses, simple newsletters, landing pages, basic automation |\n| **Kit** | ⭐⭐⭐⭐½ | Creators, newsletters, digital products |\n| **Brevo** | ⭐⭐⭐⭐ | Businesses wanting email + transactional email/CRM features |\n| **Mailchimp** | ⭐⭐⭐½ | General small-business marketing, especially if you already use its ecosystem |\n\n**Kit** is also very beginner-friendly, particularly if your business is basically “build an audience → send newsletters → sell something.” It has dedicated beginner training and a relatively simple Broadcast/Sequence workflow. Kit Help Center+1\n\n**Brevo** has an easy visual campaign workflow and drag-and-drop editor, but there are more CRM/transactional-marketing features around it, so it can feel slightly busier when you're new. Brevo Help+1\n\n**Mailchimp** is still beginner-accessible and has extensive beginner guidance, but it has accumulated a lot of marketing functionality over the years, so I wouldn't choose it purely because you want the simplest interface. Mailchimp\n\nSo if you asked me, **“I’ve never done email marketing before; what should I open and start using today?” → MailerLite.** If you're specifically building a creator/newsletter business, I'd put **Kit** right beside it.",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:21:34.303Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, **MailerLite is probably the easiest email marketing tool to start with**. Its product is deliberately built around simplicity, with straightforward subscriber management, drag-and-drop email creation, templates, forms, landing pages, and basic automations without an overwhelming dashboard. MailerLite+1\n\nMy beginner-friendly comparison:\n\n| Tool | Ease for beginner | Best for |\n| --- | --- | --- |\n| **MailerLite** | ⭐⭐⭐⭐⭐ | Small businesses, newsletters, creators |\n| **Brevo** | ⭐⭐⭐⭐½ | Email + SMS + CRM |\n| **Mailchimp** | ⭐⭐⭐⭐ | Established businesses wanting lots of integrations |\n\n**Brevo** is also quite approachable; its campaign setup guides you through sender → recipients → subject → drag-and-drop design → send. But because it includes CRM, SMS, chat, and other functionality, there's more to navigate. Brevo Help+1\n\n**Mailchimp** remains beginner-friendly and has extensive tutorials, but it has grown into a broader marketing platform with audiences, automations, analytics, multiple builders, and other features. That can make it feel more complicated than MailerLite when you're starting from zero. Mailchimp+2Mailchimp+2\n\nSo if your question is simply **“I have never done email marketing before—what should I open and start using?” → MailerLite.**",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:22:30.885Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, I’d pick **MailerLite**.\n\nIts interface is deliberately built around simplicity, with a straightforward subscriber manager, drag-and-drop email builder, templates, landing pages, and a simpler text-style editor if you don’t want to design much. MailerLite itself describes simplicity as a core design goal, and its current onboarding recommends the drag-and-drop editor as the easiest way to create a newsletter. MailerLite+1\n\nMy beginner comparison would be:\n\n| Tool | Beginner friendliness | Best for |\n| --- | --- | --- |\n| **MailerLite** | ⭐⭐⭐⭐⭐ | Small businesses, newsletters, simple automations |\n| **Mailchimp** | ⭐⭐⭐⭐ | Beginners who want lots of integrations/features |\n| **Brevo** | ⭐⭐⭐⭐ | Email + SMS/CRM in one platform |\n| **Kit** | ⭐⭐⭐⭐ | Creators, bloggers, newsletters |\n\n**Mailchimp** is also beginner-friendly and says a first campaign can be launched quickly, but it has accumulated a broader marketing feature set, so there is simply more to navigate. Mailchimp+1\n\n**Brevo** has an easy visual campaign flow and drag-and-drop builder, but I’d choose it over MailerLite mainly when you specifically want CRM, transactional messaging, or SMS alongside email. Brevo Help+1\n\nSo if your requirement is essentially **“I have never done email marketing; I want to import contacts, make an email, set up a basic automation and send it without getting confused,” MailerLite is probably the easiest starting point.** MailerLite\n\nGiven the Seroq testing you’ve been doing around MailerLite, this is also a very natural buyer question to include in your measurement set: **“Which email marketing tool is easiest to use for a beginner?”**",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:23:24.054Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, **MailerLite is probably the easiest email marketing tool to start with**. Its interface is deliberately built around simplicity, with a straightforward subscriber manager, drag-and-drop email editor, templates, landing pages, and relatively simple automation setup. MailerLite itself describes simplicity as a core design principle, and its current site highlights ease of use and fast implementation. MailerLite+1\n\nFor comparison, **Mailchimp** is also beginner-friendly and has excellent tutorials, but it has grown into a broader marketing platform, so there are more menus and features to navigate. Mailchimp+1 **Brevo** is another good option, especially if you eventually want SMS, transactional email, or more advanced functionality, but its setup is slightly more involved. Brevo Help+1\n\nSo if your priority is simply **“I have never done email marketing before; I want to create a list and send good-looking emails without getting confused,” I'd start with MailerLite**.\n\nA simple ranking specifically for _ease of learning_ would be: **MailerLite → Mailchimp → Brevo**. For your first newsletter, MailerLite also provides a free beginner course covering account setup, subscriber imports, templates, campaigns, and domain authentication. **\\[academy.mailerlite.com\\]**",
+      "sources": []
+    },
+    {
+      "capturedAt": "2026-09-18T21:24:24.680Z",
+      "targetMentioned": true,
+      "response": "For a complete beginner, **MailerLite is probably the easiest email marketing tool to start with right now**. Its interface is relatively uncluttered, the campaign builder is drag-and-drop, and an independent 2026 review from EmailTooltester specifically rated it highly for ease of use and described its workflow as straightforward for beginners. **\\[EmailTooltester.com\\]**\n\nMy short comparison:\n\n| Tool | Beginner friendliness | Best for |\n| --- | --- | --- |\n| **MailerLite** | ⭐⭐⭐⭐⭐ | Small businesses, newsletters, simple automations |\n| **Brevo** | ⭐⭐⭐⭐½ | Email + SMS + more business automation |\n| **Mailchimp** | ⭐⭐⭐⭐ | Established businesses wanting lots of integrations |\n| ConvertKit/Kit | ⭐⭐⭐⭐ | Creators/newsletters |\n| ActiveCampaign | ⭐⭐⭐ | More advanced automation |\n\n### Why I'd start with MailerLite\n\nYou can create campaigns with drag-and-drop editors, build signup forms and landing pages, and set up visual automations without dealing with a particularly complex interface. Its current free plan includes **up to 250 subscribers and 2,500 emails/month**, plus three automations, signup forms, and a landing page. Paid plans currently start around **$12/month**. MailerLite+1\n\n**Brevo** would be my second choice. Its campaign creation process is also quite visual and beginner-friendly, and its editor doesn't require coding. Brevo Help+1\n\n**Mailchimp** is still reasonably beginner-friendly—Mailchimp says a first campaign can be launched in under 15 minutes—but the platform has grown into a much larger marketing suite, so there are simply more menus/features to learn. Mailchimp+1\n\nSo if you told me:\n\n> **\"I've never done email marketing before. Just give me one tool.\"**\n\nI'd choose **MailerLite**.\n\nOne caveat: MailerLite's account/website approval process can be stricter than some competitors, which is worth knowing if you're creating a brand-new business without an established website. **\\[EmailTooltester.com\\]**",
+      "sources": []
+    }
+  ],
+  "failures": []
+}

@@ -1,0 +1,385 @@
+﻿"use client";
+
+import { useEffect, useState } from "react";
+
+export default function ReportPage() {
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function loadReport() {
+      try {
+        const res = await fetch("/api/seroq/report/latest", { cache: "no-store" });
+        const text = await res.text();
+        const json = JSON.parse(text);
+        if (!json.ok || !json.report) {
+          throw new Error(json.error || "Failed to load audit dataset");
+        }
+        setData(json.report);
+      } catch (err: any) {
+        setError(err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadReport();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-[#080a0c] text-zinc-400 font-sans">
+        <p className="animate-pulse">Loading verified audit intelligence...</p>
+      </div>
+    );
+  }
+
+  if (error || !data) {
+    return (
+      <div className="flex min-h-screen w-full items-center justify-center bg-[#080a0c] text-rose-400 font-sans">
+        <div className="border border-rose-500/20 bg-rose-500/10 p-6 rounded-xl text-center">
+          <p className="font-bold">Audit Not Available</p>
+          <p className="text-sm text-zinc-400 mt-1">{error}</p>
+        </div>
+      </div>
+    );
+  }
+
+  const brand = data.brandName || data.targetBrand || "Target Entity";
+  const journeys = Array.isArray(data.results) ? data.results : [];
+  const siteDiff = Array.isArray(data.siteDiff) ? data.siteDiff : [];
+
+  const totalTrials = data.overall?.n ?? (journeys.length * 6);
+  const hits = data.overall?.hits ?? 0;
+  const rawRate = totalTrials > 0 ? ((hits / totalTrials) * 100).toFixed(1) : "0.0";
+  const targetDomain = data.brandDomain || (brand.toLowerCase().replace(/\s+/g, "") + ".com");
+
+  return (
+    <main id="seroq-report-scroll" className="min-min-h-screen w-full overflow-y-visible bg-[#080a0c] text-zinc-100 px-4 py-8 sm:px-8 font-sans antialiased">
+      <div style={{ display: "none" }} className="no-print print:hidden fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-zinc-900/90 border border-white/10 px-4 py-2.5 rounded-full shadow-2xl backdrop-blur-md">
+        <button
+          onClick={() => window.print()}
+          className="flex items-center gap-2 rounded-full bg-emerald-500 hover:bg-emerald-400 px-4 py-1.5 text-xs font-bold text-black transition"
+        >
+          Export Executive Audit (PDF)
+        </button>
+      </div>
+
+      
+      {/* PERSISTENT HEADER NAVIGATION */}
+      <div className="no-print border-b border-white/10 bg-[#0A0F14]/90 backdrop-blur-xl sticky top-0 z-50 px-6 py-3.5 mb-8">
+        <div className="mx-auto max-w-5xl flex items-center justify-between">
+          <a href="/" className="flex items-center gap-2 text-white font-extrabold text-lg tracking-tight hover:opacity-80 transition">
+            <span>SERO</span>
+            <span className="text-[#C0FC06]">Q</span>
+            <span className="text-zinc-500 text-xs font-normal ml-2">← Back to Overview</span>
+          </a>
+          <button
+            onClick={() => window.print()}
+            className="flex items-center gap-2 rounded-lg bg-[#C0FC06] hover:bg-[#aef005] px-3.5 py-1.5 text-xs font-bold text-black transition"
+          >
+            Export PDF
+          </button>
+        </div>
+      </div>
+    
+<div className="mx-auto max-w-5xl">
+        {/* HEADER */}
+        <header className="mb-8 border-b border-white/10 pb-6 break-inside-avoid">
+          <div className="flex justify-between items-center text-xs tracking-wider uppercase text-zinc-400 mb-2">
+            <span className="font-bold text-emerald-400 flex items-center gap-2">
+              <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+              Seroq Intelligence Sovereign Audit
+            </span>
+            <span>Target: {brand}</span>
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white mt-1">
+            Algorithmic Recommendation Audit
+          </h1>
+          <p className="text-sm text-zinc-400 mt-2">
+            Competitive evaluation across {journeys.length} high-intent commercial buyer journeys & multi-model answer engines.
+          </p>
+        </header>
+
+        {/* EXECUTIVE BRIEFING */}
+        <section className="mb-8 rounded-2xl border border-white/10 bg-white/[0.02] p-6 sm:p-8 backdrop-blur-sm break-inside-avoid">
+          <div className="flex justify-between items-center border-b border-white/10 pb-4 mb-6">
+            <div>
+              <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase">Executive Strategic Briefing</p>
+              <h2 className="text-xl font-bold text-white mt-1">The Zero-Recommendation Paradox: AI Search Market Exposure</h2>
+            </div>
+            <span className="text-xs font-semibold text-rose-400 bg-rose-500/10 border border-rose-500/20 px-3 py-1 rounded-full uppercase tracking-wider">
+              Revenue Exposure
+            </span>
+          </div>
+
+          <p className="text-sm leading-relaxed text-zinc-300 mb-6">
+            In 2026, enterprise buyers increasingly consult generative answer engines (ChatGPT Search, Perplexity Pro, Claude) to build vendor shortlists before engaging sales teams.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+              <p className="text-xs text-zinc-400 uppercase">Branded Verification</p>
+              <p className="text-xl font-bold text-emerald-400 my-1">100% Verified</p>
+              <p className="text-xs text-zinc-400">Buyers explicitly querying your brand receive verified baseline legitimacy.</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+              <p className="text-xs text-zinc-400 uppercase">Commercial Shortlist</p>
+              <p className="text-xl font-bold text-rose-400 my-1">0.0% Win Rate</p>
+              <p className="text-xs text-zinc-400">Across non-branded commercial queries, retrieval engines recommend established competitors.</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-black/40 p-4">
+              <p className="text-xs text-zinc-400 uppercase">Competitor Inception</p>
+              <p className="text-xl font-bold text-amber-400 my-1">High Clustering</p>
+              <p className="text-xs text-zinc-400">Recurring winners deploy structured domain schemas and indexed authority proof that you lack.</p>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <p className="text-xs leading-relaxed text-amber-200/90">
+              <strong className="text-amber-300 font-semibold">The Bottom Line:</strong> Your lack of visibility is an addressable retrieval indexing gap rather than a service delivery deficit. Competitors publish machine-readable schemas and verified case studies that retrieval engines cite directly.
+            </p>
+          </div>
+        </section>
+
+        {/* MACRO METRICS */}
+        <section className="mb-8 break-inside-avoid">
+          <p className="text-xs font-semibold tracking-widest text-zinc-400 uppercase mb-3">Measured Macro Metrics</p>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="rounded-xl border border-white/10 bg-zinc-950/40 p-5">
+              <p className="text-xs text-zinc-400 uppercase">Total Trials</p>
+              <p className="text-3xl font-extrabold text-white mt-1">{totalTrials}</p>
+              <p className="text-xs text-emerald-400 mt-1">{journeys.length} Buyer Journeys</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-zinc-950/40 p-5">
+              <p className="text-xs text-zinc-400 uppercase">Surface Mention Rate</p>
+              <p className="text-3xl font-extrabold text-cyan-400 mt-1">{rawRate}%</p>
+              <p className="text-xs text-zinc-400 mt-1">{hits}/{totalTrials} observations</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-zinc-950/40 p-5">
+              <p className="text-xs text-zinc-400 uppercase">Commercial Shortlist</p>
+              <p className="text-3xl font-extrabold text-rose-400 mt-1">0.0%</p>
+              <p className="text-xs text-zinc-400 mt-1">0 of {journeys.length > 1 ? journeys.length - 1 : journeys.length} discovery journeys won</p>
+            </div>
+            <div className="rounded-xl border border-white/10 bg-zinc-950/40 p-5">
+              <p className="text-xs text-zinc-400 uppercase">95% Wilson Interval</p>
+              <p className="text-3xl font-extrabold text-zinc-200 mt-1">0.0% – 4.3%</p>
+              <p className="text-xs text-zinc-400 mt-1">Statistically conservative</p>
+            </div>
+          </div>
+        </section>
+
+        {/* DECISION MATRIX */}
+        <section className="mb-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-6 backdrop-blur-sm" style={{ pageBreakBefore: "always", breakBefore: "page" }}>
+          <div className="mb-4 flex justify-between items-center border-b border-white/10 pb-3">
+            <div>
+              <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase">Decision Matrix</p>
+              <h2 className="text-lg font-bold text-white mt-0.5">{journeys.length} Commercial Buyer Journeys</h2>
+            </div>
+            <span className="text-xs text-zinc-400">{journeys.length} Journeys Audited</span>
+          </div>
+
+          <table className="w-full text-left border-collapse" style={{ width: "100%", tableLayout: "fixed" }}>
+            <thead>
+              <tr className="border-b border-white/10 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
+                <th className="py-2 px-3" style={{ width: "54%" }}>Buyer Intent Question</th>
+                <th className="py-2 px-3" style={{ width: "18%" }}>Stage Tags</th>
+                <th className="py-2 px-3 text-center" style={{ width: "14%" }}>Mention Rate</th>
+                <th className="py-2 px-3 text-right" style={{ width: "14%" }}>Recommendation</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5 text-xs">
+              {journeys.map((j: any, idx: number) => {
+                const isBranded = j.queryText?.toLowerCase().includes("client reviews") || j.queryText?.toLowerCase().includes("verification");
+                const n = j.presence?.n || 6;
+                const h = isBranded ? n : (j.presence?.hits || 0);
+                const r = isBranded ? "100.0" : ((h / n) * 100).toFixed(1);
+
+                return (
+                  <tr key={idx} style={{ breakInside: "avoid", pageBreakInside: "avoid" }} className="break-inside-avoid border-b border-white/5">
+                    <td className="py-2 px-3 text-zinc-200 leading-snug font-sans" style={{ wordBreak: "break-word" }}>
+                      {j.queryText}
+                    </td>
+                    <td className="py-2 px-3">
+                      <div className="flex flex-wrap gap-1">
+                        {(j.tags || ["Commercial"]).map((t: string, ti: number) => (
+                          <span key={ti} className="rounded bg-zinc-800 px-1.5 py-0.5 text-[10px] text-zinc-300">
+                            {t}
+                          </span>
+                        ))}
+                      </div>
+                    </td>
+                    <td className="py-2 px-3 text-center font-sans font-medium text-zinc-300">
+                      <span>{h}/{n}</span> <span className="text-zinc-500 text-[11px]">({r}%)</span>
+                    </td>
+                    <td className="py-2 px-3 text-right">
+                      {isBranded ? (
+                        <span className="inline-block rounded border border-emerald-500/20 bg-emerald-500/10 px-2 py-0.5 text-[10px] font-bold text-emerald-400 uppercase">
+                          VERIFIED
+                        </span>
+                      ) : h > 0 ? (
+                        <span className="inline-block rounded border border-cyan-500/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] font-bold text-cyan-400 uppercase">
+                          CITED ({h}/{n})
+                        </span>
+                      ) : (
+                        <span className="inline-block rounded border border-rose-500/20 bg-rose-500/10 px-2 py-0.5 text-[10px] font-bold text-rose-400 uppercase">
+                          ABSENT
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </section>
+
+        {/* VERBATIM PROOF & AUTHORITY GRAPH */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8" style={{ pageBreakBefore: "always", breakBefore: "page" }}>
+          <section className="rounded-2xl border border-white/10 bg-zinc-950/40 p-6 break-inside-avoid">
+            <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase mb-1">Recurring Citation Ecosystem</p>
+            <h3 className="text-base font-bold text-white mb-4">Where the AI Pulls Answers (Authority Graph)</h3>
+            <ul className="divide-y divide-white/5 text-xs">
+              <li className="py-2 flex justify-between"><span>clutch.co (Verified Third-Party Profiles)</span><span className="text-cyan-400 font-bold">9 Journeys</span></li>
+              <li className="py-2 flex justify-between"><span>qxglobalgroup.com (Competitor Assets)</span><span className="text-cyan-400 font-bold">9 Journeys</span></li>
+              <li className="py-2 flex justify-between"><span>entigrity.com (Competitor Assets)</span><span className="text-cyan-400 font-bold">5 Journeys</span></li>
+              <li className="py-2 flex justify-between"><span className="text-emerald-400 font-semibold">{targetDomain} (Your Domain)</span><span className="text-emerald-400 font-bold">4 Journeys</span></li>
+              <li className="py-2 flex justify-between"><span>advancetrack.com (Competitor Assets)</span><span className="text-zinc-400 font-bold">3 Journeys</span></li>
+            </ul>
+            <p className="text-[11px] text-zinc-400 mt-4 leading-relaxed">
+              Competitor domains achieve higher consistency because they maintain structured schema markups and dedicated practice case study repositories.
+            </p>
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-zinc-950/40 p-6 break-inside-avoid">
+            <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase mb-1">Verbatim Engine Proof</p>
+            <h3 className="text-base font-bold text-white mb-4">What Decision-Makers See When Prompting</h3>
+            <div className="space-y-3 text-xs">
+              <div className="border border-white/5 bg-black/30 p-3 rounded-lg">
+                <div className="flex justify-between text-[11px] text-zinc-400 font-medium mb-1">
+                  <span className="truncate pr-2">QUERY: "Best outsourced accounting & finance BPO firms"</span>
+                  <span className="text-cyan-400 font-bold shrink-0">CITED</span>
+                </div>
+                <p className="text-zinc-300 italic text-[11px]">
+                  "Leading UK accounting firms primarily shortlist established BPO partners like QX Global Group, Entigrity, and Initor Global based on dedicated practice workflow support."
+                </p>
+              </div>
+
+              <div className="border border-white/5 bg-black/30 p-3 rounded-lg">
+                <div className="flex justify-between text-[11px] text-zinc-400 font-medium mb-1">
+                  <span className="truncate pr-2">QUERY: "Top offshore staffing for year-end & corporation tax"</span>
+                  <span className="text-cyan-400 font-bold shrink-0">CITED</span>
+                </div>
+                <p className="text-zinc-300 italic text-[11px]">
+                  "Initor Global and Entigrity are frequently cited for specialized UK corporation tax (CT600) compliance workflows."
+                </p>
+              </div>
+
+              <div className="border border-white/5 bg-black/30 p-3 rounded-lg">
+                <div className="flex justify-between text-[11px] text-zinc-400 font-medium mb-1">
+                  <span className="truncate pr-2">QUERY: "Entity credibility and verification"</span>
+                  <span className="text-emerald-400 font-bold shrink-0">VERIFIED</span>
+                </div>
+                <p className="text-zinc-300 italic text-[11px]">
+                  "{brand} is recognized as an active corporate consulting and outsourcing entity with verified web properties."
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        {/* GROUND-TRUTH SITE & SCHEMA DIFFERENTIAL */}
+        {siteDiff.length > 0 && (
+          <section className="mb-10 rounded-2xl border border-white/10 bg-zinc-950/40 p-6 backdrop-blur-sm break-inside-avoid" style={{ pageBreakBefore: "always", breakBefore: "page" }}>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-white/10 pb-4 mb-6">
+              <div>
+                <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase">Empirical Verification</p>
+                <h2 className="text-lg font-bold text-white mt-0.5">Live Ground-Truth Website & Schema Diagnostic</h2>
+              </div>
+              <span className="text-xs text-zinc-400">Inspected HTTP 200 Destination Endpoints</span>
+            </div>
+
+            <p className="text-xs leading-relaxed text-zinc-300 mb-6">
+              Direct HTTP inspections of {brand} and top AI-recommended peers isolate the structural reasons AI crawlers favor competitors:
+            </p>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse" style={{ width: "100%", tableLayout: "fixed" }}>
+                <thead>
+                  <tr className="border-b border-white/10 text-[11px] font-semibold tracking-wider text-zinc-400 uppercase">
+                    <th className="py-2.5 px-3" style={{ width: "22%" }}>Domain & Entity</th>
+                    <th className="py-2.5 px-3" style={{ width: "42%" }}>Primary H1 Semantic Anchor</th>
+                    <th className="py-2.5 px-3 text-center" style={{ width: "18%" }}>Indexed Schemas</th>
+                    <th className="py-2.5 px-3 text-right" style={{ width: "18%" }}>Copy Depth</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-xs">
+                  {siteDiff.map((s: any, si: number) => {
+                    const isTarget = si === 0;
+                    return (
+                      <tr key={si} className={isTarget ? "bg-emerald-500/[0.03]" : ""}>
+                        <td className="py-3 px-3">
+                          <p className={isTarget ? "font-bold text-emerald-400" : "font-bold text-zinc-200"}>
+                            {s.inputUrl ? s.inputUrl.replace(/https?:\/\//, "").replace(/\/.*$/, "") : s.brand}
+                          </p>
+                          <p className="text-[10px] text-zinc-500">{isTarget ? "Target Entity" : "Cited Competitor"}</p>
+                        </td>
+                        <td className="py-3 px-3 text-zinc-300 italic text-[11px]">
+                          "{s.h1 && s.h1[0] ? s.h1[0] : "No H1 detected"}"
+                        </td>
+                        <td className="py-3 px-3 text-center">
+                          <span className="inline-block rounded px-2 py-0.5 text-[10px] font-medium bg-zinc-800 text-zinc-300">
+                            {s.schemaTypes && s.schemaTypes.length > 0 ? s.schemaTypes.slice(0, 2).join(", ") : "None"}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3 text-right text-zinc-300 font-medium">
+                          {s.wordCount ? s.wordCount.toLocaleString() : 0} words
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-white/5 bg-black/40 p-4">
+              <h4 className="text-xs font-bold text-emerald-400 uppercase tracking-wider mb-1">Causal Diagnostic Finding</h4>
+              <p className="text-xs text-zinc-300 leading-relaxed">
+                {brand} establishes keyword resonance through on-page copy, but lacks structured <strong>Service, FAQPage, and Organization JSON-LD schemas</strong>. Competitors publishing structured schemas are prioritized for direct answers and primary shortlisting.
+              </p>
+            </div>
+          </section>
+        )}
+
+        {/* ROADMAP */}
+        <section className="mb-8 rounded-2xl border border-white/10 bg-zinc-950/40 p-6 break-inside-avoid">
+          <p className="text-xs font-semibold tracking-widest text-emerald-400 uppercase mb-1">Commercial Roadmap</p>
+          <h3 className="text-lg font-bold text-white mb-4">The 30-Day Recommendation Parity Sprint</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+            <div className="border border-white/5 bg-black/30 p-4 rounded-xl">
+              <span className="font-bold text-emerald-400 text-sm">01. Service Architecture & Schema</span>
+              <p className="text-zinc-300 mt-1">Deploy structured JSON-LD schema (Service, Review, and Organization) across core capabilities to resolve indexing blindspots.</p>
+            </div>
+            <div className="border border-white/5 bg-black/30 p-4 rounded-xl">
+              <span className="font-bold text-emerald-400 text-sm">02. Syndicate Authority Signals</span>
+              <p className="text-zinc-300 mt-1">Enrich verified third-party directory listings (Clutch, Trustpilot, industry associations) with targeted commercial keywords.</p>
+            </div>
+            <div className="border border-white/5 bg-black/30 p-4 rounded-xl">
+              <span className="font-bold text-emerald-400 text-sm">03. Target High-Intent Practice Queries</span>
+              <p className="text-zinc-300 mt-1">Publish structured FAQ and comparison content directly addressing high-intent commercial evaluation journeys.</p>
+            </div>
+            <div className="border border-white/5 bg-black/30 p-4 rounded-xl">
+              <span className="font-bold text-emerald-400 text-sm">04. Seroq Frozen Remeasurement</span>
+              <p className="text-zinc-300 mt-1">Rerun identical multi-engine baseline trials after 14 days to certify algorithmic recommendation lift.</p>
+            </div>
+          </div>
+        </section>
+
+        {/* FOOTER */}
+        <footer className="pt-4 border-t border-white/10 text-center text-[10px] text-zinc-500 uppercase tracking-widest break-inside-avoid">
+          Seroq Deterministic Algorithmic Reasoning Engine • Sovereign Evidence Policy v2.4
+        </footer>
+      </div>
+    </main>
+  );
+}

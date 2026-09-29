@@ -1,0 +1,5761 @@
+#!/usr/bin/env node
+
+/**
+ * aeo-platform v1.0.0-rc.1
+ * Open-source AEO platform — measure, audit, diagnose, recommend, and plan-generate
+ * brand visibility across ChatGPT, Claude, Gemini, and Perplexity.
+ * https://webappski.com | MIT License
+ */
+
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { join, resolve as resolvePath } from 'node:path';
+import { parseArgs } from 'node:util';
+
+import { CONFIG_FILE, DEFAULT_CONFIG, PROVIDER_PRIORITY, CLASSIFY_PROVIDER_PRIORITY, applyCliModelOverrides, cliModelPins, resolveRunModels } from '../lib/config.js';
+import { PROVIDERS } from '../lib/providers/index.js';
+import { extractOpenAIResponse } from '../lib/providers/openai.js';
+import { pickClassifyProvider } from '../lib/providers/pick-classify.js';
+import { detectMention, findPosition, extractUrls } from '../lib/mention.js';
+import { brandTerms, textMentionsBrand } from '../lib/brand-match.js';
+import { diff } from '../lib/diff.js';
+// ONE definition of the visibility denominator for every surface (MEAS-2).
+import { aggregateScore, sliceStats } from '../lib/score.js';
+// Stable question identity + declared market + canonical run root (MEAS-1).
+import { queryIdFor, manifestIndex, verifyManifest, normalizeQueryText } from '../lib/basket-manifest.js';
+import { renderMarkdown, parseRawResponse } from '../lib/report/markdown.js';
+import { renderHtml } from '../lib/report/html.js';
+import { buildMcMetadata } from '../lib/report/mc-metadata.js';
+import { classifyCitations } from '../lib/report/classify-citations.js';
+import { discoverModels, discoverClassifyModel, resolveClassifyModel, listModelIds, FALLBACK as MODEL_FALLBACK } from '../lib/providers/discover.js';
+import { MAIN_OPTIONS_BY_PROVIDER, CLASSIFY_OPTIONS_BY_PROVIDER, detectThinkingActive } from '../lib/providers/main-options.js';
+import { extractUsage, calcCost, estimateWeeklyCost } from '../lib/providers/pricing.js';
+import { formatTpmHint, estimateRunDuration } from '../lib/util/cost-estimate.js';
+import { planSchedule, runScheduled } from '../lib/util/scheduler.js';
+import { estimatePerRequest, getLearnedOrTierLimit } from '../lib/providers/tpm-ledger.js';
+import { loadLedger, saveLedger } from '../lib/providers/ledger-store.js';
+import { createLiveRows } from '../lib/util/live-rows.js';
+// Stable dependencies used in hot paths (init + run + queries-only) — promoted
+// from dynamic imports for clarity and cold-start speed.
+import { runTwoStageValidation, formatValidationResult, hasBlockers } from '../lib/init/research/run-validation.js';
+import { classifyResponseQuality } from '../lib/report/response-quality.js';
+import { extractWithTwoModels } from '../lib/report/extract-competitors-llm.js';
+import { classifySentimentWithTwoModels } from '../lib/report/sentiment-classify.js';
+import { extractProseRankWithTwoModels, proseRankField } from '../lib/report/prose-rank.js';
+import { detectAdsInResponse, summariseAdsAcrossResults } from '../lib/report/ads-detector.js';
+import { aggregateCompetitorCounts } from '../lib/report/competitor-counts.js';
+import { addCostEntry, sumCostUsd } from '../lib/report/cost-telemetry.js';
+import { normalizeQueries, attachBrandFit, queryText } from '../lib/config/queries-normalize.js';
+import { parseGeoFlag, wrapQueryForRegion, listRegionCodes, parseLangFlag, resolveRegionLang, listLangCodes } from '../lib/report/geo-context.js';
+import { computeTopDomains } from '../lib/report/top-domains.js';
+import { aggregateCanonicalSources } from '../lib/report/canonical-url.js';
+import { isOwnDomain } from '../lib/report/own-domain.js';
+import { MEASUREMENT_DISCLAIMER, MEASUREMENT_DISCLAIMER_SHORT } from '../lib/report/measurement-disclaimer.js';
+// `report`-only and `export`-only modules are dynamically imported inside their
+// command handlers to keep cold-start fast for `--help`, `--version`, `init`
+// and `run` paths (saved ~9 eager imports / ~250–300 ms on a cold disk).
+import { deriveTrainingModel, daysSinceLastFullRun } from '../lib/providers/non-search-model.js';
+import { PROVIDER_LABELS, detectStandardKeys, heuristicKeyMatch, keySetupLines, classifyKeyMode, RESEARCH_CAPABLE } from '../lib/init/keys.js';
+import { probeKeys, summarizeProbe, authFailLines } from '../lib/init/key-probe.js';
+import { checkNodeVersion } from '../lib/util/node-version.js';
+import { atomicWriteJson } from '../lib/util/atomic-write.js';
+
+// Node version gate — BEFORE any command runs. package.json `engines` is only
+// an npm warning; on Node < 20 the first runtime gap (e.g. global fetch on 16)
+// used to surface as a bare cryptic error. One sentence, one next step.
+// Note: ESM hoisting means ALL imports in this file (including those written
+// below) evaluate before this block — it gates command dispatch, not imports.
+// No module in lib/ uses Node-20+-only APIs at load time, so the gate is
+// reachable on old Node.
+{
+  const nv = checkNodeVersion(process.versions.node);
+  if (!nv.ok) {
+    console.error(nv.message);
+    process.exit(1);
+  }
+}
+
+// Running build version — stamped into the CLI header, _summary.json
+// (`generatedBy`) and the report header, so "which version produced this?"
+// is always answerable from the artifact itself (version-awareness, 1.2.x).
+const TRACKER_VERSION = (() => {
+  try {
+    return JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf-8')).version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+})();
+import { detectGeography } from '../lib/init/fetch-site.js';
+import { classifyProviderError } from '../lib/providers/classify-error.js';
+import { evaluateModelDrift } from '../lib/providers/model-drift.js';
+import { formatResearchFailurePanel } from '../lib/init/research-failure-panel.js';
+import { formatAllEnginesFailedPanel } from '../lib/errors/all-engines-failed-panel.js';
+import { formatUnexpectedErrorPanel } from '../lib/errors/unexpected-error-panel.js';
+import { createSpinner } from '../lib/util/spinner.js';
+import { sanitizeForFilename } from '../lib/util/safe-filename.js';
+import { canonicalDomainIdentity, domainStorageSlug } from '../lib/util/domain-storage.js';
+import { aggregateCellTrials, resolveSamples, MAX_SAMPLES } from '../lib/sampling.js';
+
+/**
+ * Safely extract a human-readable message from any caught value.
+ * `catch (err)` receives an `unknown` — err may be a string, a number, null,
+ * or a proper Error. `.message` is only defined on Error subclasses, so guard.
+ */
+const errMsg = (err) => (err instanceof Error ? err.message : String(err));
+
+// ─── ANSI colors (zero-dep) ───
+// Disable ANSI when stdout is not a TTY (piped to file, CI logs) or NO_COLOR is set (no-color.org convention).
+// This keeps CI log files clean — no \x1b[...m noise in GitHub Actions / GitLab CI output.
+const USE_COLOR = Boolean(process.stdout.isTTY) && !process.env.NO_COLOR;
+const c = USE_COLOR
+  ? {
+      reset: '\x1b[0m', bold: '\x1b[1m', dim: '\x1b[2m',
+      red: '\x1b[31m', green: '\x1b[32m', yellow: '\x1b[33m',
+      blue: '\x1b[34m', cyan: '\x1b[36m', white: '\x1b[37m',
+    }
+  : {
+      reset: '', bold: '', dim: '',
+      red: '', green: '', yellow: '',
+      blue: '', cyan: '', white: '',
+    };
+
+// Status glyphs. The Unicode set (✓ ⚠ ✗) renders fine on Windows Terminal,
+// macOS Terminal, and any modern Linux terminal — but old cmd.exe with the
+// default cp866/cp1251 codepage shows them as ?? boxes. We tie the fallback
+// to the same USE_COLOR signal: terminals that don't do ANSI usually don't
+// do Unicode glyphs either, so the ASCII set keeps the output readable.
+const SYM = USE_COLOR
+  ? { ok: '✓', warn: '⚠', err: '✗' }
+  : { ok: '+', warn: '!', err: 'x' };
+
+// ─── Domain-scoped storage layout ───────────────────────────────────
+//
+// Every on-disk artifact — raw responses, _summary.json, rendered reports —
+// lives under a per-domain namespace so two different domains run from the
+// same working directory can NEVER collide. Before this, storage was keyed
+// ONLY by calendar date (`aeo-responses/<date>/`), so domain A's run and
+// domain B's run on the same day wrote into the same files: B silently
+// inherited A's cached cells, trends, and enrichment. The domain slug in the
+// path makes that class of bleed structurally impossible.
+//
+// Domain identity is canonicalised to ASCII (Punycode for IDNs) before a
+// cross-platform-safe path component is built. Display-string sanitising is
+// intentionally not used as identity: distinct Unicode domains can otherwise
+// collapse to the same dash-replaced directory.
+const RESPONSES_ROOT = 'aeo-responses';
+const REPORTS_ROOT = 'aeo-reports';
+
+/** Absolute-safe slug for a domain; empty/unknown degrades to '_unknown'. */
+function domainSlug(domain) {
+  return domainStorageSlug(domain);
+}
+
+/** `aeo-responses/<slug>` — the per-domain responses root. */
+function responsesDirFor(domain) {
+  return join(RESPONSES_ROOT, domainSlug(domain));
+}
+
+/** `aeo-reports/<slug>` — the per-domain reports root. */
+function reportsDirFor(domain) {
+  return join(REPORTS_ROOT, domainSlug(domain));
+}
+
+/**
+ * MEAS-1 — say out loud when this invocation is not standing in the basket's
+ * canonical run root.
+ *
+ * `aeo-responses/<domain>/<date>/` is resolved relative to the CURRENT working
+ * directory. Run the same basket from two directories and you get two parallel
+ * histories under the same dates, and "compare with the baseline" silently
+ * means whichever tree you happen to be standing in. That is exactly what
+ * happened to the webappski basket: identical 2026-08-31 summaries exist in two
+ * trees, and the diff's answer depended on the shell's cwd.
+ *
+ * This warns; it does NOT redirect, move or delete anything. Redirecting the
+ * storage root is a behaviour change for every command and belongs in its own
+ * piece of work. Making the fork visible is what removes the silent part.
+ *
+ * @param {object} config parsed `.aeo-tracker.json`
+ * @param {string} command command name, for the message
+ * @returns {boolean} true when a warning was printed
+ */
+function warnIfNotCanonicalRunRoot(config, command) {
+  const canonical = config?.basketManifest?.runRoot;
+  if (typeof canonical !== 'string' || !canonical.trim()) return false;
+  const here = resolvePath(process.cwd());
+  const there = resolvePath(canonical);
+  if (here === there) return false;
+  console.warn(`${c.yellow}  ${SYM.warn} This basket's canonical run root is ${there}${c.reset}`);
+  console.warn(`${c.dim}    You are running \`${command}\` in ${here}, so results are read from and written to ${join(here, RESPONSES_ROOT)}.${c.reset}`);
+  console.warn(`${c.dim}    Both trees are kept — nothing is moved or deleted — but a comparison only makes sense within ONE of them.${c.reset}`);
+  return true;
+}
+
+const DATE_DIR_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+function dateDirectoriesUnder(dir) {
+  if (!existsSync(dir)) return [];
+  try {
+    return readdirSync(dir, { withFileTypes: true })
+      .filter(entry => entry.isDirectory() && DATE_DIR_RE.test(entry.name))
+      .map(entry => entry.name);
+  } catch {
+    return [];
+  }
+}
+
+function recordedLegacyDomain(date) {
+  const summaryPath = join(RESPONSES_ROOT, date, '_summary.json');
+  if (!existsSync(summaryPath)) return null;
+  try {
+    const summary = JSON.parse(readFileSync(summaryPath, 'utf-8'));
+    return typeof summary.domain === 'string' && summary.domain.trim()
+      ? summary.domain.trim()
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+function legacyDateBelongsToDomain(date, domain) {
+  const recorded = recordedLegacyDomain(date);
+  const recordedIdentity = canonicalDomainIdentity(recorded);
+  const activeIdentity = canonicalDomainIdentity(domain);
+  return !!recordedIdentity && !!activeIdentity && recordedIdentity === activeIdentity;
+}
+
+/** Namespaced-first read resolver with a domain-verified flat fallback. */
+function responseDateDirForRead(domain, date) {
+  const namespaced = join(responsesDirFor(domain), date);
+  if (existsSync(namespaced)) return namespaced;
+  const legacy = join(RESPONSES_ROOT, date);
+  return existsSync(legacy) && legacyDateBelongsToDomain(date, domain) ? legacy : null;
+}
+
+/** Continue a compatible same-day legacy run in place; fresh dates namespace. */
+function responseDateDirForWrite(domain, date) {
+  return responseDateDirForRead(domain, date) || join(responsesDirFor(domain), date);
+}
+
+function responseDatesForRead(domain) {
+  const dates = new Set(dateDirectoriesUnder(responsesDirFor(domain)));
+  for (const date of dateDirectoriesUnder(RESPONSES_ROOT)) {
+    if (legacyDateBelongsToDomain(date, domain)) dates.add(date);
+  }
+  return [...dates].sort();
+}
+
+async function readPreviousScore(domain, beforeDate) {
+  const dates = responseDatesForRead(domain).filter(date => date < beforeDate).reverse();
+  for (const date of dates) {
+    const dir = responseDateDirForRead(domain, date);
+    if (!dir) continue;
+    try {
+      const summary = JSON.parse(await readFile(join(dir, '_summary.json'), 'utf-8'));
+      if (typeof summary.score === 'number') return summary.score;
+    } catch { /* malformed/absent summary — keep scanning */ }
+  }
+  return null;
+}
+
+/**
+ * Resolve which domain a read-only command (report/export/diff) should operate
+ * on. Preference:
+ *   1. `.aeo-tracker.json` `domain` — the active project, same signal `run` uses.
+ *   2. If no config domain but exactly ONE domain namespace exists on disk,
+ *      use it (a bare `report` in a single-domain dir still just works).
+ *   3. Otherwise fail loudly, listing the available domains so the operator
+ *      picks one via a config or a fresh `init` — never silently blend domains.
+ * Returns the domain STRING (caller slugs it via responsesDirFor/reportsDirFor).
+ */
+async function resolveActiveDomain() {
+  let configDomain = null;
+  if (existsSync(CONFIG_FILE)) {
+    try {
+      const cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+      if (cfg && typeof cfg.domain === 'string' && cfg.domain.trim()) {
+        configDomain = cfg.domain.trim();
+      }
+    } catch { /* unreadable config — fall through to on-disk autodetect */ }
+  }
+  if (configDomain) return configDomain;
+
+  // No usable config domain — autodetect from the responses tree.
+  if (!existsSync(RESPONSES_ROOT)) return null;
+  let entries = [];
+  try {
+    entries = readdirSync(RESPONSES_ROOT, { withFileTypes: true })
+      .filter(entry => entry.isDirectory());
+  } catch { /* unreadable — treat as none */ }
+  const candidates = new Map();
+  for (const entry of entries) {
+    if (!DATE_DIR_RE.test(entry.name)) {
+      const identity = canonicalDomainIdentity(entry.name);
+      candidates.set(identity || entry.name, entry.name);
+    }
+  }
+  for (const entry of entries) {
+    if (!DATE_DIR_RE.test(entry.name)) continue;
+    const recorded = recordedLegacyDomain(entry.name);
+    if (recorded) candidates.set(canonicalDomainIdentity(recorded) || recorded, recorded);
+  }
+  const domains = [...candidates.values()];
+  if (domains.length === 1) return domains[0];
+  if (domains.length === 0) {
+    if (entries.some(entry => DATE_DIR_RE.test(entry.name))) {
+      const err = new Error(
+        `Legacy runs under ${RESPONSES_ROOT}/ do not contain one readable domain. ` +
+        `Add a valid "domain" to ${CONFIG_FILE} (or run \`aeo-platform init\`) to select a project safely.`,
+      );
+      err.isDomainAmbiguity = true;
+      throw err;
+    }
+    return null;
+  }
+  const err = new Error(
+    `Multiple domains found under ${RESPONSES_ROOT}/ (${domains.join(', ')}) and no ` +
+    `${CONFIG_FILE} to disambiguate. Run \`aeo-platform init\` for the domain you ` +
+    `want to report on, or add a "domain" to ${CONFIG_FILE}.`,
+  );
+  err.isDomainAmbiguity = true;
+  throw err;
+}
+
+// ─── Stale artifact cleanup ─────────────────────────────────────────
+//
+// `aeo-platform report` writes to aeo-reports/<latest-date>/. Older date
+// directories accumulate orphaned report.md / report.html from previous tool
+// versions or out-of-cycle runs — those become misleading after a layout
+// rewrite (e.g. v0.5 bento) because the old reports still render the old
+// layout, and a reader who opens the wrong file thinks the new code is broken.
+// Called from cmdReport after the latest artifacts are written.
+async function cleanupStaleReportArtifacts(latestDate, domain) {
+  // Scope the sweep to THIS domain's reports namespace — never reach across
+  // into another domain's dated proof archive (that once wiped historical
+  // renders; see the --public guard at the call site).
+  const reportsDir = reportsDirFor(domain);
+  if (!existsSync(reportsDir)) return { removedFiles: 0, removedDirs: 0 };
+  const { readdirSync, rmdirSync } = await import('node:fs');
+  const { unlink } = await import('node:fs/promises');
+  let removedFiles = 0;
+  let removedDirs = 0;
+  for (const entry of readdirSync(reportsDir)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(entry)) continue;  // only date-named dirs
+    if (entry === latestDate) continue;                 // never touch the latest
+    const dirPath = join(reportsDir, entry);
+    for (const fname of ['report.html', 'report.md']) {
+      const p = join(dirPath, fname);
+      if (existsSync(p)) {
+        try { await unlink(p); removedFiles++; } catch { /* skip */ }
+      }
+    }
+    // Remove the date dir if it's now empty (no custom files left).
+    try {
+      if (readdirSync(dirPath).length === 0) {
+        rmdirSync(dirPath);
+        removedDirs++;
+      }
+    } catch { /* skip */ }
+  }
+  return { removedFiles, removedDirs };
+}
+
+// ─── Atomic JSON persist for cache updates ───
+//
+// All cmdReport cache writers (citation classification, LLM actions, authority,
+// crawlability, outreach) follow the same write-tmp + rename pattern. Centralised
+// here so the random suffix is unique across pid+ms+random (avoids collisions on
+// double-press) and the helper is one line to call.
+async function persistSnapshot(latest) {
+  // `sessionCostUsd` is DERIVED from `costByModel` — never a separately-tracked
+  // number. Re-deriving at the single write chokepoint makes the invariant
+  // unbreakable by any future writer, and heals snapshots written before it held:
+  // the concurrent cache-fillers used to leave the total describing a subset of
+  // the breakdown (webappski 2026-07-31: breakdown $0.0577, stored total $0.0296),
+  // and nothing else in the codebase would ever have corrected that file. A
+  // report for an older date may therefore now show a HIGHER — correct — cost
+  // than it did before.
+  if (Array.isArray(latest.costByModel)) latest.sessionCostUsd = sumCostUsd(latest.costByModel);
+  const summaryPath = join(responseDateDirForWrite(latest.domain, latest.date), '_summary.json');
+  await atomicWriteJson(summaryPath, latest);
+}
+
+
+/**
+ * Read + parse .aeo-tracker.json with client-grade failures (AP-FAIL-BRANCHES):
+ * missing file and hand-edit JSON syntax errors each get ONE plain next step
+ * instead of a bare ENOENT / SyntaxError through the top-level panel.
+ */
+async function readConfigOrExit() {
+  try {
+    return JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+  } catch (err) {
+    if (err?.code === 'ENOENT') {
+      console.error(`${c.red}No ${CONFIG_FILE} found. Run: aeo-platform init${c.reset}`);
+    } else {
+      console.error(`${c.red}${CONFIG_FILE} has a JSON syntax error (usually a missing/extra comma after hand-editing).${c.reset}`);
+      console.error(`${c.red}Fix the file in an editor — or regenerate it: aeo-platform init${c.reset}`);
+    }
+    process.exit(1);
+  }
+}
+
+// ─── LLM-based action recommendations ───
+
+async function deriveActionsWithLLM(latest, prev, category, { providerName, providerCall, apiKey, model }) {
+  const PLABELS = { openai: 'ChatGPT', gemini: 'Gemini', anthropic: 'Claude', perplexity: 'Perplexity' };
+  const providers = [...new Set(latest.results.map(r => r.provider))];
+
+  const engineLines = providers.map(p => {
+    const rs = latest.results.filter(r => r.provider === p && r.mention !== 'error');
+    // Same denominator the report publishes (lib/score.js) — a prompt that
+    // quotes different numbers than the report teaches the model a different
+    // run than the one the reader is looking at.
+    const st = sliceStats(rs);
+    const perQuery = rs.map(r => `    Q: "${r.queryText || r.query}" → ${r.mention}`).join('\n');
+    return `  ${PLABELS[p] || p}: ${st.hits}/${st.valid} mentions\n${perQuery}`;
+  }).join('\n');
+
+  const compLines = (latest.topCompetitors || []).slice(0, 8)
+    .map(c => `  - ${c.name} (${c.count} checks)`).join('\n') || '  (none detected)';
+
+  // Strip the user's own domain (and subdomains) BEFORE the prompt is built —
+  // without this filter, deriveActionsWithLLM's «recommend pitching this source
+  // specifically» rule produces self-pitch actions when the brand's own pages
+  // are its most-cited sources (May-2026 typelessform.com dogfood run).
+  const ownDom = latest.domain || '';
+  const externalSources = (latest.topCanonicalSources || []).filter(s => {
+    if (!s || typeof s.url !== 'string') return false;
+    let host;
+    try { host = new URL(s.url).hostname; }
+    catch { return true; } // keep malformed entries; downstream guards handle them
+    return !isOwnDomain(host, ownDom);
+  });
+  const srcLines = externalSources.slice(0, 8)
+    .map(s => `  ${s.count}× ${s.url}`).join('\n') || '  (none)';
+
+  const prevNote = prev
+    ? `Previous score: ${prev.score}% (${latest.score >= prev.score ? '+' : ''}${latest.score - prev.score}pp change)`
+    : 'First run — no historical comparison available.';
+
+  const prompt = `You are a senior AEO (Answer Engine Optimization) consultant. Analyse this visibility data and write 3–5 concrete, specific, actionable recommendations.
+
+BRAND: ${latest.brand}
+DOMAIN: ${latest.domain}
+CATEGORY: ${category}
+CURRENT SCORE: ${latest.score}% (${latest.mentions}/${latest.total} checks returned a mention)
+${prevNote}
+
+RESULTS BY ENGINE:
+${engineLines}
+
+COMPETITORS FOUND IN AI ANSWERS:
+${compLines}
+
+TOP SOURCES AI KEEPS CITING FOR THIS VERTICAL:
+${srcLines}
+
+Rules:
+- Be specific. Name the exact query, source, or competitor — not generic advice.
+- Each action must be completable this week by one person.
+- Prioritise gaps (brand invisible) over polish.
+- Outreach is OUT OF SCOPE. Never recommend pitching editors, cold outreach, or guest posts. For canonical sources, recommend self-service actions (directories, profile optimization) or own-content improvements instead.
+- If a competitor dominates, explain exactly where and how to displace them.
+- DEAD TACTICS — never recommend these, they do not affect whether AI engines cite a site:
+  * /llms.txt. Google states it is not needed for AI Overviews, AI Mode or any generative AI Search feature; no provider has confirmed support; a ~300,000-domain study found no correlation with citation.
+  * FAQPage or HowTo structured data as a visibility tactic. The FAQ rich result stopped showing on 2026-05-07 and its docs were removed on 2026-06-15; HowTo has been dead since 2023. Adding schema in general shows no measured citation uplift (Ahrefs, 1,885 pages vs ~4,000 controls). Never tell the user to REMOVE markup they already have either.
+  * Unblocking GPTBot, Google-Extended, ClaudeBot, GoogleOther, CCBot or Bytespider "so AI can cite you". Those are training/other crawlers. The crawlers that actually gate citations are OAI-SearchBot, PerplexityBot, Claude-SearchBot and Googlebot (plus noindex/nosnippet).
+  Recommendations containing these are stripped from the report mechanically, so one wasted on them is a recommendation the client never sees.
+
+Return STRICT JSON only:
+{
+  "actions": [
+    {
+      "kind": "gap|compete|defend|win",
+      "priority": "high|med|low",
+      "engines": ["openai"],
+      "title": "Max 8 words",
+      "detail": "1–2 sentences, specific and actionable."
+    }
+  ]
+}
+
+engines = array of provider names (openai/gemini/anthropic/perplexity), empty if cross-engine.`;
+
+  const { text, raw } = await providerCall(prompt, apiKey, model, { webSearch: false });
+
+  const cleaned = text.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```\s*$/i, '');
+  let parsed;
+  try { parsed = JSON.parse(cleaned); } catch {
+    const m = cleaned.match(/\{[\s\S]*\}/);
+    if (m) parsed = JSON.parse(m[0]);
+    else throw new Error('Could not parse actions response');
+  }
+  if (!Array.isArray(parsed?.actions) || parsed.actions.length === 0) {
+    throw new Error('LLM returned empty actions array');
+  }
+
+  const usage = extractUsage(providerName, raw);
+  const costDetail = calcCost(model, usage) || { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: 0 };
+  return {
+    actions: parsed.actions,
+    costInfo: {
+      provider: providerName, model, label: 'action-recommendations',
+      requests: 1,
+      inputTokens: costDetail.inputTokens,
+      outputTokens: costDetail.outputTokens,
+      costUsd: costDetail.costUsd,
+    },
+  };
+}
+
+// ─── Provider helpers ───
+
+const PROVIDER_MODULES = {
+  openai:    '../lib/providers/openai.js',
+  anthropic: '../lib/providers/anthropic.js',
+  gemini:    '../lib/providers/gemini.js',
+};
+const PROVIDER_CALL_FN = { openai: 'callOpenAI', anthropic: 'callAnthropic', gemini: 'callGemini' };
+
+// ─── Replay mode ───
+// Serves cached raw provider responses from aeo-responses/DATE/*.json instead
+// of hitting the live APIs. Two legitimate use-cases:
+//   1. Iterating on report/parser/UI locally without burning API credits.
+//   2. Re-generating a summary with new extractor logic from historical data.
+// Stale-data caveat: the raw engine responses reflect the capture date, not
+// today — citations and competitor sets may have drifted. Activated by:
+//   aeo-platform run --replay                    # replay the most recent snapshot
+//   aeo-platform run --replay-from=2026-04-22    # replay a specific date
+
+function _extractFromRaw(providerName, raw) {
+  if (providerName === 'anthropic') {
+    const text = (raw.content || []).filter(b => b.type === 'text').map(b => b.text).join('\n');
+    const citations = (raw.content || [])
+      .filter(b => b.type === 'web_search_tool_result')
+      .flatMap(b => (b.content || []).map(c => c.url).filter(Boolean));
+    return { text, citations };
+  }
+  if (providerName === 'openai') {
+    // Shared extractor — handles BOTH Responses-API (output[]) and legacy
+    // Chat-Completions (choices[]) cache shapes. See lib/providers/openai.js.
+    return extractOpenAIResponse(raw);
+  }
+  if (providerName === 'gemini') {
+    const text = (raw.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('\n');
+    const citations = (raw.candidates?.[0]?.groundingMetadata?.groundingChunks || [])
+      .map(ch => {
+        const web = ch.web; if (!web?.uri) return null;
+        const isRedirect = /^https?:\/\/vertexaisearch\.cloud\.google\.com\/grounding-api-redirect\//.test(web.uri);
+        if (isRedirect) {
+          const t = web.title;
+          if (t && /^[\w-]+(?:\.[\w-]+)+(?:\/|$)/.test(t)) return t.startsWith('http') ? t : `https://${t}`;
+          return null;
+        }
+        return web.uri;
+      })
+      .filter(Boolean);
+    return { text, citations };
+  }
+  if (providerName === 'perplexity') {
+    const text = raw.choices?.[0]?.message?.content || '';
+    const citations = raw.citations || raw.choices?.[0]?.message?.citations || [];
+    return { text, citations };
+  }
+  return { text: '', citations: [] };
+}
+
+async function _tryReplay(qi, provider, srcDate, trialSuffix = '', domain = '') {
+  const safeModel = sanitizeForFilename(provider.model);
+  // AP-MEASURE-SAMPLING-CI: multi-trial runs persist each trial as a distinct
+  // file `q{n}…-{provider}-{model}.t{trial}.json`. The replay reader MUST take
+  // the SAME suffix the writer used, or N trials would all replay the single
+  // base file (defeating the whole point — sampling would be a no-op on replay).
+  // `trialSuffix` is '' for single-shot (byte-identical legacy path) and
+  // `.t{trial}` for sampled cells. See rawFile construction in the run loop.
+  // Domain-scoped: replay only ever reads THIS domain's prior raw files.
+  const replayDir = responseDateDirForRead(domain, srcDate);
+  if (!replayDir) return null;
+  const replayPath = join(replayDir, `q${qi}-${provider.name}-${safeModel}${trialSuffix}.json`);
+  if (!existsSync(replayPath)) return null;
+  // Malformed cache → treat as miss; caller falls back to live call (or fails
+  // through replaySrcDate gate). Prevents an uncaught SyntaxError from crashing
+  // the run when a fixture file is half-written / hand-edited.
+  let raw;
+  try {
+    raw = JSON.parse(await readFile(replayPath, 'utf-8'));
+  } catch {
+    return null;
+  }
+  const { text, citations } = _extractFromRaw(provider.name, raw);
+  return { text, citations, raw };
+}
+
+/**
+ * Look across `aeo-responses/<date>/_summary.json` for the most recent
+ * `lastFullRun` field and return its age in days. Returns null if no prior
+ * full run is recorded — caller treats null as "always prompt".
+ *
+ * Used by `aeo-platform run --depth=auto` to decide when training-data
+ * baseline is due for a refresh.
+ */
+async function _readLastFullRunStaleness(domain) {
+  const dates = responseDatesForRead(domain).reverse();
+  for (const date of dates) {
+    const dateDir = responseDateDirForRead(domain, date);
+    if (!dateDir) continue;
+    const summaryPath = join(dateDir, '_summary.json');
+    if (!existsSync(summaryPath)) continue;
+    try {
+      const summary = JSON.parse(await readFile(summaryPath, 'utf-8'));
+      if (summary.lastFullRun) {
+        return daysSinceLastFullRun(summary.lastFullRun);
+      }
+    } catch { /* corrupt — keep scanning */ }
+  }
+  return null;
+}
+
+async function _resolveReplaySource(explicitDate, domain) {
+  if (explicitDate) return responseDateDirForRead(domain, explicitDate) ? explicitDate : null;
+  const dates = responseDatesForRead(domain);
+  return dates[dates.length - 1] || null;
+}
+
+/**
+ * Build a resolved provider descriptor ready for research/brainstorm calls.
+ * @param {string} name              Provider key — 'openai' | 'anthropic' | 'gemini'
+ * @param {string} envVarName        The env var name holding the API key
+ */
+async function makeResearchProvider(name, envVarName, providerConfig = DEFAULT_CONFIG.providers) {
+  const callFn = (await import(PROVIDER_MODULES[name]))[PROVIDER_CALL_FN[name]];
+  const cfg = providerConfig?.[name] || DEFAULT_CONFIG.providers[name] || {};
+  const main = cfg.model || DEFAULT_CONFIG.providers[name]?.model;
+  const classify = cfg.classifyModel || cfg.model || DEFAULT_CONFIG.providers[name]?.classifyModel
+    || DEFAULT_CONFIG.providers[name]?.model;
+  // MAIN_OPTIONS_BY_PROVIDER injects thinking/reasoning_effort into mainCall;
+  // CLASSIFY_OPTIONS_BY_PROVIDER injects a lighter version into classifyCall
+  // (plus webSearch:false, always — classify never searches). See
+  // lib/providers/main-options.js for rationale and per-provider values.
+  const mainOptions = MAIN_OPTIONS_BY_PROVIDER[name] || {};
+  const classifyOptions = CLASSIFY_OPTIONS_BY_PROVIDER[name] || {};
+  return {
+    name,
+    providerCall: callFn,                                          // legacy alias — raw call, no options injected
+    classifyCall: (q, k, m, opts = {}) => callFn(q, k, m, { ...classifyOptions, webSearch: false, ...opts }),
+    mainCall: (q, k, m, opts = {}) => callFn(q, k, m, { ...mainOptions, ...opts }),
+    apiKey: process.env[envVarName],
+    model: main,                // generation tier — used for brainstorm/research
+    classifyModel: classify,    // classification tier — used by runValidationFlow
+    mainOptions,                // exposed for tests / debug
+    label: PROVIDER_LABELS[name],
+  };
+}
+
+/**
+ * List all available research providers in PROVIDER_PRIORITY order. The retry
+ * loop in init walks this array on billing/auth/rate-limit errors — first
+ * provider that returns a successful research result wins; if all fail, the
+ * actionable error panel enumerates what was tried.
+ * @param {Object} providerKeyMap   { providerName: envVarName } — any subset
+ * @param {Object} [providerConfig] cfg.providers from .aeo-tracker.json (or
+ *                                  DEFAULT_CONFIG.providers as fallback when
+ *                                  invoked before init has written a config)
+ * @returns {Promise<Array>} zero or more provider descriptors in priority order
+ */
+async function listResearchProviders(providerKeyMap, providerConfig = DEFAULT_CONFIG.providers) {
+  const hasKey = (name) => providerKeyMap[name] && process.env[providerKeyMap[name]];
+  const available = PROVIDER_PRIORITY.filter(hasKey);
+  return Promise.all(available.map(name => makeResearchProvider(name, providerKeyMap[name], providerConfig)));
+}
+
+/**
+ * Build { primary, validator } for the research pipeline. Backwards-compatible
+ * wrapper over listResearchProviders — picks first as primary, second as
+ * cross-model validator. Used by validation paths that don't need retry logic
+ * (they're already defensive via runValidationFlow).
+ * @param {Object} providerKeyMap   { providerName: envVarName } — any subset of providers
+ * @param {Object} [providerConfig] cfg.providers from .aeo-tracker.json
+ * Returns { primary: null } if no key is available in the environment.
+ */
+async function buildResearchProviders(providerKeyMap, providerConfig = DEFAULT_CONFIG.providers) {
+  const providers = await listResearchProviders(providerKeyMap, providerConfig);
+  return {
+    primary: providers[0] || null,
+    validator: providers[1] || null,
+  };
+}
+
+/**
+ * Resolve the two-model competitor-extraction providers (OpenAI + Gemini at
+ * their classify tier), in RESEARCH_CAPABLE preference order. Two available →
+ * parallel cross-check; one → single-model extraction (callers mark results
+ * unverified — single-key mode, 1.1.8); zero → throw with one next step.
+ */
+/**
+ * A providerConfig view whose `classifyModel` is the LIVE one for each provider,
+ * for callers outside `cmdRun`'s discovery loop (`run-manual`).
+ *
+ * `cmdRun` rediscovers both tiers and hands `buildExtractionProviders` the
+ * resolved view; `run-manual` used to hand it the raw config file, so the two
+ * legs of a single day's run could be classified by different models — which is
+ * what happened on 2026-09-01 and is invisible unless someone reads the logs of
+ * both commands side by side. Best-effort by construction: `resolveClassifyModel`
+ * never throws and falls back to the config pin, so an offline `run-manual`
+ * behaves exactly as before.
+ *
+ * @param {Object} providerConfig
+ * @returns {Promise<Object>} shallow per-provider clones with classifyModel resolved
+ */
+/**
+ * The classify-tier models actually in use, as `["openai/gpt-5-nano", …]` —
+ * stable, sorted, and safe to diff between two summaries.
+ * @param {{primary: Object, secondary: Object|null}} extraction
+ * @returns {string[]}
+ */
+function extractorModelList(extraction) {
+  return [extraction?.primary, extraction?.secondary]
+    .filter(p => p && p.model)
+    .map(p => `${p.name}/${p.model}`)
+    .sort();
+}
+
+async function resolveClassifyProviderConfig(providerConfig) {
+  const base = providerConfig || DEFAULT_CONFIG.providers;
+  const entries = await Promise.all(
+    Object.entries(base).map(async ([name, cfg]) => [
+      name,
+      { ...cfg, classifyModel: (await resolveClassifyModel(name, cfg)) || cfg.classifyModel },
+    ]),
+  );
+  return Object.fromEntries(entries);
+}
+
+async function buildExtractionProviders(providerConfig) {
+  const mkProvider = async (name) => {
+    const cfg = providerConfig?.[name] || DEFAULT_CONFIG.providers[name];
+    const envVar = cfg?.env || `${name.toUpperCase()}_API_KEY`;
+    const apiKey = process.env[envVar];
+    if (!apiKey) return null;
+    const callFn = (await import(PROVIDER_MODULES[name]))[PROVIDER_CALL_FN[name]];
+    // Extraction is a structured-classification task — use the cheap classify
+    // tier from the user's config (or DEFAULT_CONFIG fallback).
+    const classifyModel = cfg?.classifyModel
+      || DEFAULT_CONFIG.providers[name]?.classifyModel
+      || cfg?.model
+      || DEFAULT_CONFIG.providers[name]?.model;
+    return {
+      name,
+      providerCall: callFn,
+      apiKey,
+      model: classifyModel,
+      label: PROVIDER_LABELS[name],
+    };
+  };
+  // Single-key mode (1.1.8, founder decision): build whatever research-capable
+  // providers exist, in preference order. Two → parallel cross-check as before;
+  // one → single-model extraction (callers mark results unverified); zero →
+  // the only remaining hard failure, with one next step.
+  const built = (await Promise.all(RESEARCH_CAPABLE.map(mkProvider))).filter(Boolean);
+  if (built.length === 0) {
+    throw new Error('Competitor extraction needs at least ONE research-capable API key (OPENAI_API_KEY, GEMINI_API_KEY, or ANTHROPIC_API_KEY). Set one and re-run — see README for setup.');
+  }
+  return { primary: built[0], secondary: built[1] || null };
+}
+
+/**
+ * Shared two-stage validation flow used by init, init --queries-only, and run.
+ * Handles console I/O, cost display, interactive y/N fallback, and abort logic.
+ * Returns the validation object (includes updatedCache to persist in config).
+ */
+async function runValidationFlow({
+  queries, brand, domain, category, geography = [],
+  primary, secondary = null, validationCache = [],
+  nonInteractive = false, force = false, strictValidation = false,
+  onAbort,
+  // 0.2.4 recovery hook: when true, caller wants to inspect blockers and
+  // attempt auto-recovery via validator-recovery.js before any abort. The
+  // flow still prints the validation lines and cost; it just skips the final
+  // interactive prompt / exit call. Default false preserves backward
+  // compatibility for every existing call site.
+  returnBlockersInsteadOfAbort = false,
+  // Prompt callback for the "Save/run anyway? [y/N]" question. Passed in by
+  // the caller — same shared prompter the whole command uses, so we don't
+  // create a competing readline on the same stdin.
+  ask,
+}) {
+  const willCallLLM = primary && (validationCache || []).length === 0
+    ? queries.length > 0
+    : queries.some(q => !(validationCache || []).find(c => c.query === q));
+
+  // Use the classify-tier model (Haiku / 4o-mini equivalent) — structured
+  // classification task, not generation. ~10× cheaper than the flagship
+  // model at equivalent accuracy for binary/structured judgements.
+  // .classifyModel on each descriptor is set by makeResearchProvider from
+  // cfg.classifyModel. WHICH provider's classify tier answers the (default,
+  // non-strict) single-model call is CLASSIFY_PROVIDER_PRIORITY-ordered
+  // (Gemini first, OpenAI residual) — independent of `primary`/`secondary`,
+  // which are PROVIDER_PRIORITY-ordered (OpenAI first) for main-tier purposes.
+  const classifyPool = [primary, secondary].filter(Boolean);
+  const pickedClassify = pickClassifyProvider(classifyPool) || primary;
+  // strict cross-check partner: whichever of {primary, secondary} is NOT the
+  // picked one — still always both providers when strictValidation is set,
+  // just relabelled now that "primary" no longer dictates which one is default.
+  const crossCheckPartner = classifyPool.find(p => p !== pickedClassify) || null;
+
+  const classifyPrimary = pickedClassify
+    ? { ...pickedClassify, model: pickedClassify.classifyModel || pickedClassify.model }
+    : null;
+  const classifySecondary = (strictValidation && crossCheckPartner)
+    ? { ...crossCheckPartner, model: crossCheckPartner.classifyModel || crossCheckPartner.model }
+    : null;
+
+  if (willCallLLM && classifyPrimary) {
+    const who = classifySecondary
+      ? `${classifyPrimary.label} + ${classifySecondary.label} (strict cross-check)`
+      : classifyPrimary.label;
+    process.stdout.write(`${c.dim}  Validating queries via ${who}... ${c.reset}`);
+  }
+
+  const v = await runTwoStageValidation({
+    queries, brand, domain, category, geography,
+    primary: classifyPrimary, secondary: classifySecondary, validationCache,
+  });
+
+  if (willCallLLM) {
+    const cost = v.costInfo?.costUsd ? `$${v.costInfo.costUsd.toFixed(4)}` : '';
+    console.log(`${c.dim}${cost ? `(${cost})` : ''}${c.reset}`);
+  } else if (v.cacheHits > 0) {
+    console.log(`${c.dim}  ${SYM.ok} validation cache hit for all ${v.cacheHits} query/queries (no LLM cost)${c.reset}`);
+  }
+
+  const lines = formatValidationResult(v);
+  for (const line of lines) console.log(`  ${c.yellow}${line}${c.reset}`);
+
+  if (!hasBlockers(v)) {
+    if (lines.length === 0) console.log(`${c.green}  ${SYM.ok} All queries pass validation${c.reset}`);
+    return v;
+  }
+
+  if (force) {
+    console.log(`${c.yellow}  --force set — proceeding despite blockers.${c.reset}`);
+    return v;
+  }
+  if (returnBlockersInsteadOfAbort) {
+    // Caller will decide: auto-recover, prompt, or fall back to panel.
+    return v;
+  }
+  if (nonInteractive) {
+    console.error(`${c.red}${SYM.err} Aborted — queries failed validation. Fix queries or pass --force.${c.reset}`);
+    if (onAbort) onAbort(); else process.exit(1);
+    return v;
+  }
+
+  const ans = ask
+    ? (await ask(`${c.yellow}Save/run anyway? [y/N] ${c.reset}`, 'n')).trim()
+    : 'n';
+  if (!/^y/i.test(ans)) {
+    console.log(`${c.yellow}Aborted. Tip: aeo-platform init --queries-only to regenerate.${c.reset}`);
+    if (onAbort) onAbort(); else process.exit(0);
+  }
+  return v;
+}
+
+/**
+ * Wraps runValidationFlow with auto-recovery for informationalIssues blockers.
+ * Goal (per no-silent-fatal-aborts rule): if the validator blocks queries and
+ * we already have validated alternatives in the candidatePool, try to swap
+ * blocked → alternative with intent-diversity ranking, and re-validate (free
+ * cache hit). Falls back to actionable panel when recovery is not possible.
+ *
+ * Behavior matrix:
+ *   no blockers                     → pass-through
+ *   any static/llm blocker          → actionable panel + exit (substitution unsafe)
+ *   1 informational-blocker + pool  → --yes: auto-promote + warning; TTY: prompt
+ *   2+ informational-blockers  +yes → panel (safer default per senior review)
+ *   2+ informational-blockers  +TTY → prompt for each
+ *   pool exhausted / 0 substitutes  → actionable panel + exit
+ *
+ * Returns the final validation object (with substituted queries reflected in
+ * v.updatedCache) and the possibly-modified queries array. Never calls
+ * process.exit on the happy-path; caller handles error exit when
+ * recoveryFailed is true.
+ */
+async function runValidationWithRecovery({
+  queries, queryIntents = [], candidatePool = [],
+  brand, domain, category, geography = [],
+  primary, secondary = null, validationCache = [],
+  nonInteractive = false, force = false, strictValidation = false,
+  ask, useColor = true,
+  commercialPassingCount = null,  // 1.0.6: threaded from cmdInit substitution block
+}) {
+  const v = await runValidationFlow({
+    queries, brand, domain, category, geography,
+    primary, secondary, validationCache,
+    nonInteractive, force, strictValidation,
+    returnBlockersInsteadOfAbort: true,
+    ask,
+  });
+
+  const info = v.informationalIssues || [];
+  const hasStatic = (v.staticIssues || []).length > 0;
+  const hasLlm = (v.llmIssues || []).length > 0;
+  const hasInfo = info.length > 0;
+
+  if (force || (!hasStatic && !hasLlm && !hasInfo)) {
+    return { v, queries, recoveryFailed: false };
+  }
+
+  const {
+    tryAutoRecover, formatRecoveryPanel, formatAutoPromoteWarning,
+    promptBlockedQueryReplacement, isVerifiedSubstitute, dedupeBlockersByQuery,
+  } = await import('../lib/init/validator-recovery.js');
+
+  const printPanel = (allBlockers) => {
+    // 1.0.4 Fix A: candidatePool entries arrive already enriched with
+    // search_behavior. 1.0.6: also pass commercialPassingCount for the
+    // honest "X of 5 commercial candidates" header — when present (from
+    // cmdInit substitution block), recovery panel uses it; when undefined
+    // (legacy callers / --keywords mode), recovery panel falls back to
+    // the existing wording.
+    const lines = formatRecoveryPanel({
+      allBlockers, candidatePool, currentQueries: queries,
+      brand, domain, category, useColor,
+      commercialPassingCount,
+    });
+    for (const ln of lines) console.log(ln);
+  };
+
+  // Static blockers (acronym ambiguity) stay terminal — a substitution cannot
+  // prove it avoids the same ambiguity class.
+  if (hasStatic) {
+    printPanel([...(v.staticIssues || []), ...(v.llmIssues || []), ...info]);
+    return { v, queries, recoveryFailed: true };
+  }
+
+  // 1.1.8: llm blockers (valid:false verdicts) are recoverable too — but only
+  // with VERIFIED substitutes (pool entry's own verdict: valid:true AND
+  // retrieval-triggered). The old blanket "llm → panel" rule threw away
+  // validated alternatives while aborting the whole init. Informational-only
+  // blocker sets keep the legacy pool (entries carry search_behavior but may
+  // predate the `valid` field).
+  const blockers = dedupeBlockersByQuery([...(v.llmIssues || []), ...info]);
+  const effectivePool = hasLlm ? candidatePool.filter(isVerifiedSubstitute) : candidatePool;
+
+  const queriesWithIntent = queries.map((t, i) => ({ text: t, intent: queryIntents[i] || '' }));
+  const recover = tryAutoRecover({
+    blockers, queries: queriesWithIntent, candidatePool: effectivePool,
+  });
+
+  if (recover.unresolvedBlockers.length > 0) {
+    printPanel(blockers);
+    return { v, queries, recoveryFailed: true };
+  }
+
+  // --yes + single blocker → auto-promote silently. --yes + multi → panel.
+  if (nonInteractive) {
+    if (blockers.length > 1) {
+      printPanel(blockers);
+      return { v, queries, recoveryFailed: true };
+    }
+    for (const sub of recover.substitutions) {
+      for (const ln of formatAutoPromoteWarning(sub, useColor)) console.log(ln);
+    }
+  } else {
+    // TTY: prompt for each blocker. User may override the auto-recovered pick.
+    const newQueries = [...queries];
+    const usedTexts = new Set(newQueries);
+    for (const blocker of blockers) {
+      const available = effectivePool.filter(c => !usedTexts.has(c.text));
+      const choice = await promptBlockedQueryReplacement({
+        blocker, available, ask, useColor,
+      });
+      if (choice.action === 'abort') {
+        printPanel(blockers);
+        return { v, queries, recoveryFailed: true };
+      }
+      if (choice.action === 'manual') {
+        const typed = (await ask('  Type your replacement: ')).trim();
+        if (!typed) {
+          printPanel(blockers);
+          return { v, queries, recoveryFailed: true };
+        }
+        const idx = newQueries.indexOf(blocker.query);
+        if (idx >= 0) newQueries[idx] = typed;
+        usedTexts.add(typed);
+      } else {
+        const idx = newQueries.indexOf(blocker.query);
+        if (idx >= 0) newQueries[idx] = choice.text;
+        usedTexts.add(choice.text);
+      }
+    }
+    recover.newQueries = newQueries;
+  }
+
+  // Re-validate substituted queries. Free: all substitutes came from the
+  // pool which is already in validationCache → cache hit on every query.
+  const v2 = await runValidationFlow({
+    queries: recover.newQueries, brand, domain, category, geography,
+    primary, secondary, validationCache: v.updatedCache || validationCache,
+    nonInteractive, force: true /* substitutes are pre-validated */,
+    strictValidation, returnBlockersInsteadOfAbort: true,
+    ask,
+  });
+
+  return { v: v2, queries: recover.newQueries, recoveryFailed: false };
+}
+
+/**
+ * Wraps a research() logPhase callback so that long-running phases (brainstorm,
+ * validate, simulate) show a live TTY spinner between 'started' and
+ * 'done'/'failed'/'skipped'. Non-TTY output stays identical to the pre-spinner
+ * flat log — no \r tricks, no animated frames — which keeps CI logs grep-able.
+ *
+ * Caller owns the final-line format (same parts builder as before, preserved
+ * byte-for-byte). Spinner only occupies the "live" render between events.
+ *
+ * @param {ReturnType<typeof createSpinner>} spinner
+ * @returns {(evt: {phase:string,status:string,details?:object}) => void}
+ */
+function makePipelineReporter(spinner) {
+  const isTTY = !!process.stdout.isTTY;
+  return ({ phase, status, details }) => {
+    const parts = [`${c.dim}  [${phase}]`, status];
+    if (details?.count !== undefined) parts.push(`(${details.count})`);
+    if (details?.kept !== undefined) parts.push(`kept=${details.kept} rejected=${details.rejected}`);
+    if (details?.topScore !== undefined) parts.push(`topScore=${details.topScore}`);
+    if (details?.validator) parts.push(`via ${details.validator}`);
+    if (details?.passed !== undefined) parts.push(`passed=${details.passed} rejected=${details.rejected ?? details.failed}`);
+    if (details?.reason) parts.push(`— ${details.reason}`);
+    const line = parts.join(' ') + c.reset;
+
+    if (status === 'started') {
+      spinner.start(`[${phase}] running...`);
+      if (!isTTY) console.log(line);
+    } else if (status === 'attempt') {
+      const pos = details?.attempt && details?.total
+        ? ` attempt ${details.attempt}/${details.total}`
+        : ' attempt';
+      spinner.update(`[${phase}]${pos}`);
+      if (!isTTY) console.log(line);
+    } else {
+      // done | failed | skipped — caller-owned final line
+      spinner.stop(line);
+    }
+  };
+}
+
+// ─── Commands ───
+
+async function cmdInit(opts = {}) {
+  const nonInteractive = opts.yes === true;
+
+  // The shared prompter owns process.stdin / readline lifecycle for the whole
+  // command. The top-level dispatcher creates it once and threads it into
+  // every command — a second createPrompter() in here would mean two readline
+  // interfaces racing on the same stdin (the exact regression that 1.0.2 fixed).
+  // Direct callers (tests, programmatic embedding) must inject their own
+  // prompter — see test/prompt-lifecycle.test.js for the contract.
+  if (!opts.prompter) {
+    throw new Error('cmdInit: opts.prompter is required (the dispatcher in bin/aeo-tracker.js wires this; tests must pass createPrompter({...}))');
+  }
+  const ask = opts.prompter.ask;
+
+  console.log(`\n${c.bold}aeo-platform — init${opts.queriesOnly ? ' --queries-only' : ''}${c.reset}\n`);
+
+  // ── --queries-only: re-suggest queries without touching the rest of config ──
+  if (opts.queriesOnly) {
+    if (!existsSync(CONFIG_FILE)) {
+      console.error(`${c.red}No ${CONFIG_FILE} found. Run: aeo-platform init${c.reset}`);
+      process.exit(1);
+    }
+    const existing = await readConfigOrExit();
+    const { brand, domain: existingDomain, providers: existingProviders } = existing;
+    if (!brand || !existingDomain) {
+      console.error(`${c.red}Config is missing brand or domain — run aeo-platform init first${c.reset}`);
+      process.exit(1);
+    }
+
+    console.log(`${c.dim}  Brand: ${brand} | Domain: ${existingDomain}${c.reset}`);
+    console.log(`${c.dim}  Existing queries:${c.reset}`);
+    (existing.queries || []).forEach((q, i) => console.log(`    Q${i + 1}: ${queryText(q)}`));
+
+    // Build provider key map from existing config + standard env var names
+    const standard = detectStandardKeys();
+    const existingKeyMap = {};
+    for (const p of PROVIDER_PRIORITY) {
+      const envName = existingProviders?.[p]?.env || standard[p];
+      if (envName) existingKeyMap[p] = envName;
+    }
+    const { primary, validator } = await buildResearchProviders(existingKeyMap);
+    if (!primary) {
+      console.error(`${c.red}No API key found. Ensure at least one provider key is in the environment.${c.reset}`);
+      process.exit(1);
+    }
+
+    const { normalizeUrl, fetchSite, parseSiteContent, detectAudience } = await import('../lib/init/fetch-site.js');
+    const fullUrl = normalizeUrl(existingDomain);
+
+    console.log(`\n${c.dim}  Fetching ${fullUrl}...${c.reset}`);
+    let site;
+    try {
+      const { html } = await fetchSite(fullUrl);
+      site = parseSiteContent(html);
+    } catch (err) {
+      console.error(`${c.red}Failed to fetch site: ${errMsg(err)}${c.reset}`);
+      process.exit(1);
+    }
+
+    const categoryDescription = existing.category || '';
+    const audienceTags = detectAudience(site);
+    const geoTags = detectGeography(existingDomain, site);
+
+    const { research } = await import('../lib/init/research/research.js');
+    const { selectTopThree, formatSelection, compareCandidates } = await import('../lib/init/research/select.js');
+    console.log(`${c.dim}  [brainstorm → filter → score → validate]${c.reset}\n`);
+
+    let newQueries = [];
+    let newCandidatePool = [];
+    // AP-SEGMENT-LIVE: query-text → brand-fit label for the re-suggested basket.
+    // Same role as cmdInit's config_queryBrandFits, scoped to this early-return
+    // --queries-only branch. Stamped onto the saved basket at write time so the
+    // report's core/aspirational segment block wakes for re-suggested baskets too.
+    const queriesOnlyBrandFits = new Map();
+    const noteQOnlyFit = (text, fit) => {
+      if (typeof text === 'string' && text.trim() && typeof fit === 'string' && fit.trim()) {
+        queriesOnlyBrandFits.set(text, fit.trim().toLowerCase());
+      }
+    };
+    const queriesOnlySpinner = createSpinner();
+    try {
+      const researchResult = await research({
+        brand, domain: existingDomain, site, category: categoryDescription,
+        audienceTags, geoTags, primary, validator,
+        logPhase: makePipelineReporter(queriesOnlySpinner),
+      });
+      const selectResult = selectTopThree(researchResult.candidates, { validationSkipped: !validator });
+      console.log(`\n${c.dim}  pipeline cost ~$${researchResult.trace.estimatedCostUsd.toFixed(4)}${c.reset}\n`);
+
+      // 1.0.6 — commercial-only over-generate + silent substitution
+      // (symmetric with main cmdInit; uses existing.validationCache for hits).
+      // Classify task, not generation — same classify-tier remap as cmdInit's
+      // primaryForValidation (see that call site for the full rationale).
+      const qOnlyValidationProvider = pickClassifyProvider([primary, validator].filter(Boolean)) || primary;
+      const primaryQOnly = qOnlyValidationProvider
+        ? { ...qOnlyValidationProvider, model: qOnlyValidationProvider.classifyModel || qOnlyValidationProvider.model }
+        : null;
+      const allFiveQOnly = [
+        ...selectResult.selected.map(s => s.candidate),
+        ...selectResult.alternatives,
+      ];
+      let commercialPassingCountQOnly = null;
+      if (allFiveQOnly.length >= 3 && primaryQOnly?.providerCall) {
+        const isTTY = !!process.stdout.isTTY;
+        queriesOnlySpinner.start('[validate] checking commercial intent...');
+        if (!isTTY) console.log(`${c.dim}  [validate] checking commercial intent...${c.reset}`);
+        try {
+          const { runTwoStageValidation, SEARCH_BEHAVIORS } =
+            await import('../lib/init/research/run-validation.js');
+          const validationQOnly = await runTwoStageValidation({
+            queries: allFiveQOnly.map(c => c.text),
+            brand, domain: existingDomain, category: categoryDescription,
+            geography: geoTags || [],
+            primary: primaryQOnly,
+            secondary: null,
+            validationCache: existing.validationCache || [],
+            commercialOnly: false,
+          });
+          const verdictsQOnly = validationQOnly.updatedCache || [];
+          if (verdictsQOnly.length === 0) {
+            throw new Error('Validation returned no verdicts');
+          }
+          for (const c of allFiveQOnly) {
+            const verdict = verdictsQOnly.find(v => v.query === c.text);
+            if (verdict) {
+              c.search_behavior = verdict.search_behavior;
+              c.confidence = verdict.confidence;
+            }
+          }
+          // 1.0.8: same rules as main validation (run-validation.js:186 + :194).
+          // valid === true AND retrieval-triggered. Legacy cache without `valid`
+          // field fails closed. See main path for full rationale.
+          const PASS = (c) => {
+            const verdict = verdictsQOnly.find(v => v.query === c.text);
+            if (!verdict) return true;  // graceful: no verdict → pass through
+            return verdict.valid === true
+                && verdict.search_behavior === SEARCH_BEHAVIORS.RETRIEVAL;
+          };
+          const passing = allFiveQOnly.filter(PASS);
+          commercialPassingCountQOnly = passing.length;
+          queriesOnlySpinner.stop(`${c.dim}  [validate] done — passed=${commercialPassingCountQOnly}/${allFiveQOnly.length}${c.reset}`);
+          if (commercialPassingCountQOnly >= 3) {
+            passing.sort(compareCandidates);
+            selectResult.selected = passing.slice(0, 3).map(c => ({
+              intent: c.intent || 'commercial',
+              candidate: c,
+              fallbackUsed: null,
+            }));
+            selectResult.alternatives = passing.slice(3).map(c => ({ ...c }));
+          }
+        } catch (err) {
+          queriesOnlySpinner.stop();
+          console.error(`${c.yellow}  Validation skipped: ${errMsg(err)}${c.reset}`);
+        }
+      }
+      selectResult.commercialPassingCount = commercialPassingCountQOnly;
+
+      for (const line of formatSelection(selectResult)) console.log(line);
+
+      const accept = (nonInteractive ? 'y' : (await ask(`\nReplace queries? [Y]es / [e]dit / [n]o: `, 'y'))).trim();
+      if (/^e/i.test(accept)) {
+        for (let i = 0; i < selectResult.selected.length; i++) {
+          const cand = selectResult.selected[i].candidate;
+          const v = (await ask(`  Q${i + 1} [${cand.text}]: `, cand.text)).trim();
+          newQueries.push(v || cand.text);
+        }
+      } else if (!/^n/i.test(accept)) {
+        newQueries = selectResult.selected.map(s => s.candidate.text);
+      }
+      // AP-SEGMENT-LIVE: record brand-fit for selected + pool candidates (keyed
+      // by text), so the stamp at save time resolves selected, edited-to-match,
+      // and recovery-substituted queries alike.
+      for (const s of selectResult.selected) noteQOnlyFit(s.candidate?.text, s.candidate?.brandFit);
+      for (const a of selectResult.alternatives) noteQOnlyFit(a?.text, a?.brandFit);
+      if (selectResult.alternatives.length > 0) {
+        newCandidatePool = selectResult.alternatives.slice(0, 5).map(a => ({
+          text: a.text,
+          intent: a.intent,
+          score: a.score,
+          unverified: !!a.unverified,
+          ...(a.search_behavior ? {
+            search_behavior: a.search_behavior,
+            confidence: a.confidence,
+          } : {}),
+          // AP-FIX-BRANDFIT: cache the fit label so validator-recovery's pool
+          // sort (tryAutoRecover) can use it as the score-tie tiebreaker on a
+          // later run without reclassifying. See --auto path for the same cache.
+          ...(a.brandFit ? { brandFit: a.brandFit } : {}),
+          ...(a.topUp ? { topUp: true } : {}),
+        }));
+      }
+    } catch (err) {
+      console.error(`${c.red}Research failed: ${errMsg(err)}${c.reset}`);
+      process.exit(1);
+    }
+
+    if (newQueries.length !== 3) {
+      console.log(`${c.yellow}Aborted — no queries saved.${c.reset}`);
+      return;
+    }
+
+    // Two-stage validation (same contract as full init path).
+    const validationQ = await runValidationFlow({
+      queries: newQueries,
+      brand, domain: existingDomain,
+      category: categoryDescription,
+      geography: geoTags || [],
+      primary, secondary: validator,
+      validationCache: existing.validationCache || [],
+      nonInteractive,
+      force: opts.force,
+      strictValidation: opts.strictValidation,
+      onAbort: () => { process.exit(nonInteractive ? 1 : 0); },
+      ask,
+    });
+
+    // v0.7 — basket versioning. Decide additive vs replace mode.
+    //   --add-queries     → preserve old queries, append new (skipping dupes)
+    //   --replace-queries → forget old queries entirely (forks history)
+    //   neither flag      → ask interactively, default to ADDITIVE (preserves trends)
+    const { readBasket, recordExpansion, recordReplacement, mergeQueries, initialBasket } =
+      await import('../lib/init/basket-history.js');
+
+    let mode = 'replace'; // default before flag/prompt logic
+    if (opts.addQueries && opts.replaceQueries) {
+      console.error(`${c.red}--add-queries and --replace-queries are mutually exclusive${c.reset}`);
+      process.exit(1);
+    } else if (opts.addQueries) {
+      mode = 'add';
+    } else if (opts.replaceQueries) {
+      mode = 'replace';
+    } else if (!nonInteractive && (existing.queries || []).length > 0) {
+      const ans = (await ask(
+        `\n${c.yellow}Existing basket detected (${(existing.queries || []).length} queries).${c.reset}\n  [a]dd new alongside existing (preserve trends)\n  [r]eplace all (fork history)\n  [c]ancel\nChoice [a/r/c, default=a]: `,
+        'a'
+      )).trim().toLowerCase();
+      if (/^c/.test(ans)) {
+        console.log('Aborted.');
+        return;
+      }
+      mode = /^r/.test(ans) ? 'replace' : 'add';
+    }
+
+    const today = new Date().toISOString().slice(0, 10);
+    let finalQueries;
+    let basketUpdate;
+    if (mode === 'add') {
+      // AP-SEGMENT-LIVE: stamp the new queries BEFORE merge so the brand-fit
+      // label rides into the active basket; mergeQueries dedups by text (object-
+      // aware) and preserves prior entries' shapes, so existing tagged queries
+      // keep their labels and unclassified ones stay bare strings.
+      finalQueries = mergeQueries(existing.queries || [], attachBrandFit(newQueries, queriesOnlyBrandFits));
+      // First time touching basket logic on a legacy config — synthesise v1
+      // entry from existing queries before recording the v2 expansion. History
+      // mirrors the active basket shape so a later dedup compares like-for-like.
+      const hadHistory = Array.isArray(existing.basketHistory) && existing.basketHistory.length > 0;
+      const baseConfig = hadHistory
+        ? existing
+        : { ...existing, ...initialBasket(existing.queries || [], today) };
+      basketUpdate = recordExpansion(baseConfig, finalQueries, today);
+    } else {
+      // Replace mode forks history — stamp the fresh basket so the new era
+      // carries brand-fit from query one.
+      finalQueries = attachBrandFit(newQueries, queriesOnlyBrandFits);
+      basketUpdate = recordReplacement(existing, finalQueries, today);
+    }
+
+    const updated = { ...existing, queries: finalQueries, ...basketUpdate };
+    if (newCandidatePool.length > 0) updated.candidatePool = newCandidatePool;
+    if (validationQ?.updatedCache?.length > 0) {
+      updated.validationCache = validationQ.updatedCache;
+    }
+    // Unique-suffix atomic write (fail-branch #8): the fixed `.tmp` suffix
+    // could collide if two config writers ran against the same dir; atomicWriteJson
+    // uses pid+time+random, matching the _summary.json writers for consistency.
+    await atomicWriteJson(CONFIG_FILE, updated);
+
+    console.log(`\n${c.green}${SYM.ok} Queries updated in ${CONFIG_FILE}${c.reset}`);
+    if (mode === 'add') {
+      console.log(`  ${c.dim}Mode: additive — original Q1-Q${(existing.queries || []).length} preserved, new queries appended${c.reset}`);
+    } else {
+      console.log(`  ${c.yellow}Mode: replace — basket forked at v${basketUpdate.basketVersion} (prior versions kept in basketHistory)${c.reset}`);
+    }
+    finalQueries.forEach((q, i) => console.log(`  Q${i + 1}: ${queryText(q)}`));
+    console.log(`\nNext: ${c.cyan}aeo-platform run${c.reset}\n`);
+    return;
+  }
+
+  // P0.1 preconditions for non-interactive mode
+  if (nonInteractive) {
+    if (!opts.brand || !opts.domain) {
+      console.error(`${c.red}--yes requires --brand and --domain${c.reset}`);
+      process.exit(1);
+    }
+    if (!opts.auto && !opts.manual && !opts.keywords) {
+      console.error(`${c.red}--yes requires --auto, --manual, or --keywords="q1,q2,q3"${c.reset}`);
+      console.error(`${c.dim}  --auto       Let the LLM pipeline brainstorm and validate queries${c.reset}`);
+      console.error(`${c.dim}  --manual     Type queries interactively (skipped in --yes; provide --keywords instead)${c.reset}`);
+      console.error(`${c.dim}  --keywords   Supply your own 3 queries, skip brainstorm (zero LLM cost)${c.reset}`);
+      process.exit(1);
+    }
+    if (process.env.AEO_TRACKER_DRY_RUN === '1') {
+      console.log('precondition-ok');
+      process.exit(0);
+    }
+  }
+
+  // A7: existing config
+  if (existsSync(CONFIG_FILE)) {
+    if (nonInteractive) {
+      console.log(`${c.yellow}${CONFIG_FILE} exists — overwriting (--yes mode)${c.reset}`);
+    } else {
+      const ans = (await ask(`${c.yellow}${CONFIG_FILE} already exists. Overwrite? [Y/n] ${c.reset}`, 'y')).trim();
+      if (/^n/i.test(ans)) { console.log('Aborted.'); return; }
+    }
+  }
+
+  const { promptShortBrand, promptBrandNotFound } = await import('../lib/init/brand-recovery.js');
+
+  // Step 1 — brand + domain
+  let brand = (opts.brand || (await ask(`Brand name (e.g. webappski): `, ''))).trim();
+  if (!brand) { console.error(`${c.red}Brand is required${c.reset}`); process.exit(1); }
+
+  // P2.2: short brand warning — offer to re-enter instead of a hard exit
+  while (brand.length <= 3) {
+    if (nonInteractive) {
+      console.log(`${c.yellow}${SYM.warn} Brand "${brand}" is very short. Mention detection may produce false positives (e.g. "AI" matches every "ai" word in answers).${c.reset}`);
+      break;
+    }
+    const choice = await promptShortBrand({ brand, ask, useColor: USE_COLOR });
+    if (choice.action === 'continue') break;
+    brand = choice.brand;
+    if (!brand) { console.error(`${c.red}Brand is required${c.reset}`); process.exit(1); }
+  }
+
+  const domainRaw = (opts.domain || (await ask(`Domain (e.g. webappski.com, or full URL): `, ''))).trim();
+  if (!domainRaw) { console.error(`${c.red}Domain is required${c.reset}`); process.exit(1); }
+
+  const { normalizeUrl, extractDomain, fetchSite, parseSiteContent, detectSiteIssues, inferCategory, detectAudience } = await import('../lib/init/fetch-site.js');
+  const fullUrl = normalizeUrl(domainRaw);
+  const domain = extractDomain(domainRaw);
+
+  // Step 2 — detect API keys
+  const providerKey = {};
+  const standard = detectStandardKeys();
+  const heuristic = heuristicKeyMatch();
+
+  console.log(`\n${c.bold}Checking environment for API keys...${c.reset}`);
+
+  const standardFound = Object.entries(standard).filter(([, n]) => n);
+  if (standardFound.length > 0) {
+    for (const [p, n] of standardFound) {
+      console.log(`  ${c.green}${SYM.ok}${c.reset} ${PROVIDER_LABELS[p]}: ${n}`);
+      providerKey[p] = n;
+    }
+  } else {
+    console.log(`  ${c.dim}Standard names not set${c.reset}`);
+  }
+
+  const missingAfterStandard = Object.keys(PROVIDER_LABELS).filter(p => !providerKey[p]);
+  const heuristicCandidates = missingAfterStandard
+    .map(p => [p, heuristic[p]])
+    .filter(([, names]) => names.length > 0);
+
+  if (heuristicCandidates.length > 0) {
+    console.log(`\n  ${c.bold}Heuristic match — these look like API keys under non-standard names:${c.reset}`);
+    for (const [p, names] of heuristicCandidates) {
+      console.log(`    ${c.yellow}?${c.reset} ${PROVIDER_LABELS[p]}: ${names.join(', ')}`);
+    }
+    const use = (nonInteractive ? 'y' : (await ask(`Use these? [Y/n] `, 'y'))).trim();
+    if (!/^n/i.test(use)) {
+      for (const [p, names] of heuristicCandidates) {
+        if (names.length === 1) {
+          providerKey[p] = names[0];
+        } else if (nonInteractive) {
+          // I-4 (fail-branch #3): with several look-alike candidates and no human
+          // to pick, do NOT telepath `names[0]`. When the live probe is on, probe
+          // each candidate and keep the FIRST that authenticates; drop the rest.
+          // Probe off (--no-key-check) → fall back to first (unchanged behaviour).
+          let chosen = names[0];
+          if (!opts.noKeyCheck) {
+            // probeKeys keys by provider; for same-provider multi-candidate we
+            // probe each env var individually (in parallel) and take the first
+            // that authenticates.
+            const perCandidate = await Promise.all(
+              names.map(async (n) => ({ n, v: (await probeKeys({ [p]: n }))[0] })),
+            );
+            const ok = perCandidate.find(x => x.v.status === 'ok');
+            const unreachableCandidate = perCandidate.find(x => x.v.status === 'unreachable');
+            if (ok) {
+              chosen = ok.n;
+            } else if (unreachableCandidate) {
+              // Couldn't reach the provider for any candidate — can't disambiguate
+              // online; keep first and let the format check stand (never wall).
+              chosen = unreachableCandidate.n;
+            } else {
+              // Every candidate actively failed auth — keep first; the main probe
+              // below surfaces the auth failure with a single actionable step.
+              chosen = names[0];
+            }
+          }
+          providerKey[p] = chosen;
+        } else {
+          console.log(`  Multiple candidates for ${PROVIDER_LABELS[p]}:`);
+          names.forEach((n, i) => console.log(`    [${i + 1}] ${n}`));
+          const pick = (await ask(`  Pick [1-${names.length}] or Enter to skip: `, '')).trim();
+          const idx = Number(pick) - 1;
+          if (idx >= 0 && idx < names.length) providerKey[p] = names[idx];
+        }
+      }
+    }
+  }
+
+  // Step 3 — interactive per-provider fallback for anything stages 1+2 missed.
+  // Runs even when SOME providers were found — so a user with OpenAI under the
+  // standard name + Gemini under a non-matching custom name is still prompted for
+  // the missing required provider (instead of silently proceeding → hard-failing
+  // later at `run` because the two-model extractor can't start).
+  const REQUIRED_PROVIDERS = ['openai', 'gemini'];
+  const OPTIONAL_PROVIDERS = ['anthropic', 'perplexity'];
+  const MAX_ATTEMPTS = 3;
+
+  // Detect when a user pastes an ACTUAL API key instead of an env var NAME.
+  // This is the most common confusion — the prompt says "env var name" but
+  // someone under time pressure just pastes what's in their clipboard.
+  // All major AI providers use recognisable prefixes for their key values.
+  const looksLikeActualKey = (s) =>
+    /^(sk-[a-z]|AIzaSy|sk-ant-|pplx-|ya29\.|gsk_)/i.test(s);
+
+  const verifyEnvVar = (name) => {
+    // Safety: user pasted the KEY VALUE instead of the env var NAME.
+    // Never log the value; just nudge them toward the correct input.
+    if (looksLikeActualKey(name)) {
+      return {
+        ok: false,
+        reason: `that looks like an API key value, not an env var name. Please type the NAME of the variable that holds your key (e.g. OPENAI_API_KEY or MY_OPENAI_KEY) — your actual key stays in your shell env, aeo-tracker only needs to know which variable to read`,
+      };
+    }
+    // Env var names must be [A-Z_][A-Z0-9_]* (POSIX). Detect invalid chars early.
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      return { ok: false, reason: `"${name}" isn't a valid env var name — names can only contain letters, digits, and underscores, and cannot start with a digit` };
+    }
+    const value = process.env[name];
+    if (value === undefined) return { ok: false, reason: `$${name} is not set in your shell — check the name (case-sensitive) or set the variable first${process.platform === 'win32' ? ' (PowerShell: setx, then open a new terminal)' : ' via ~/.zshrc'}` };
+    if (value.length < 20) return { ok: false, reason: `$${name} is set, but the value is too short (${value.length} chars) — real API keys are 40+ chars, so this looks like a typo` };
+    return { ok: true, length: value.length };
+  };
+
+  if (!nonInteractive) {
+    const missingRequired = REQUIRED_PROVIDERS.filter(p => !providerKey[p]);
+    const missingOptional = OPTIONAL_PROVIDERS.filter(p => !providerKey[p]);
+
+    if (missingRequired.length > 0 || missingOptional.length > 0) {
+      console.log(`\n${c.yellow}Some API keys weren't auto-detected. Type the env var name (not the key itself) — or Enter to skip optional providers:${c.reset}`);
+    }
+
+    // Required: loop until entered OR attempts exhausted.
+    for (const p of missingRequired) {
+      for (let attempt = 1; attempt <= MAX_ATTEMPTS && !providerKey[p]; attempt++) {
+        const tag = attempt === 1 ? '(required)' : `(required, attempt ${attempt}/${MAX_ATTEMPTS})`;
+        const name = (await ask(`  ${PROVIDER_LABELS[p]} env var name ${tag}: `, '')).trim();
+        if (!name) {
+          // Single-key mode (1.1.8): with at least one research-capable key
+          // already present, the second one is an upgrade, not a wall.
+          if (classifyKeyMode(providerKey).mode !== 'none') {
+            console.log(`    ${c.yellow}${SYM.warn} Skipping ${PROVIDER_LABELS[p]} — continuing in single-key mode (no cross-model verification).${c.reset}`);
+            break;
+          }
+          console.log(`    ${c.yellow}${SYM.warn} ${PROVIDER_LABELS[p]} cannot be skipped yet — at least ONE research-capable key (OpenAI, Gemini, or Anthropic) is required.${c.reset}`);
+          continue;
+        }
+        const v = verifyEnvVar(name);
+        if (!v.ok) {
+          console.log(`    ${c.red}${SYM.err} ${name}: ${v.reason}${c.reset}`);
+          continue;
+        }
+        providerKey[p] = name;
+        console.log(`    ${c.green}${SYM.ok} verified (${v.length} chars)${c.reset}`);
+      }
+    }
+
+    // Optional: one shot per provider, Enter to skip.
+    for (const p of missingOptional) {
+      const name = (await ask(`  ${PROVIDER_LABELS[p]} env var name (Enter to skip — optional): `, '')).trim();
+      if (!name) continue;
+      const v = verifyEnvVar(name);
+      if (!v.ok) {
+        console.log(`    ${c.yellow}${SYM.warn} ${name}: ${v.reason} — skipping ${PROVIDER_LABELS[p]}${c.reset}`);
+        continue;
+      }
+      providerKey[p] = name;
+      console.log(`    ${c.green}${SYM.ok} verified (${v.length} chars)${c.reset}`);
+    }
+  }
+
+  // Single-key mode (1.1.8, founder decision 2026-06-11): the old wall — hard
+  // exit unless BOTH OpenAI and Gemini are present — turned away every client
+  // with one key before their first taste. Now: zero research-capable keys is
+  // the only hard failure; exactly one degrades honestly with a banner.
+  const keyMode = classifyKeyMode(providerKey);
+  if (keyMode.mode === 'none') {
+    console.log(`\n${c.red}No research-capable API key found — aeo-platform needs at least ONE of: OpenAI, Gemini, or Anthropic.${c.reset}`);
+    console.log(`Two keys (OpenAI + Gemini) are recommended: they enable cross-model verification of competitor mentions.`);
+    console.log(`\nGet a key (2 minutes):`);
+    console.log(`  OpenAI: https://platform.openai.com/api-keys`);
+    console.log(`  Gemini: https://aistudio.google.com/apikey`);
+    console.log(`  Anthropic: https://console.anthropic.com/settings/keys`);
+    console.log('');
+    for (const line of keySetupLines()) console.log(line);
+    console.log('');
+    process.exit(1);
+  }
+
+  // ── Live key-authentication probe (fail-branch #1/#3, AP-FAILBRANCH-REMAINDER) ──
+  // At least one research-capable key is present. Before declaring success,
+  // confirm each present key actually AUTHENTICATES — a right-shaped but
+  // revoked / typo'd / wrong-project key passes the format check and only
+  // blows up later at `run`, after the client invested in config. For our
+  // trump-card product the install bar is "no install problems in principle".
+  //
+  // Invariants (architect-approved, audited):
+  //   I-1: goes through discoverModels() ONLY (never raw fetchers). authError →
+  //        actionable exit(1); models==null && !authError → SILENT degrade to
+  //        the format-only check already run above. Network NEVER fails init.
+  //   I-2: runs between providerKey resolution and the success banner, after the
+  //        zero-key hard-exit (nothing to probe with zero keys).
+  //   I-3: identical in --yes — same exit(1) + one step; no new prompts.
+  //   I-6: parallel (probeKeys → Promise.all over present keys).
+  if (!opts.noKeyCheck) {
+    console.log(`\n${c.dim}Verifying your API key(s) authenticate…${c.reset}`);
+    const verdicts = await probeKeys(providerKey);
+    const { authFailed, anyUnreachable, allOk } = summarizeProbe(verdicts);
+
+    if (authFailed.length > 0) {
+      // I-1/I-3: any key that the provider actively rejected (401/403) is a hard
+      // fail — proceeding would hand the client a config that cannot run.
+      console.log(`\n${c.red}${SYM.err} ${authFailed.length === 1 ? 'A key did' : 'Some keys did'} not authenticate:${c.reset}`);
+      for (const v of authFailed) {
+        for (const line of authFailLines(v, PROVIDER_LABELS)) {
+          console.log(`  ${c.red}${line}${c.reset}`);
+        }
+      }
+      console.log(`\n${c.dim}(Offline or behind a VPN? Re-run with --no-key-check to skip the live check — format checks still run.)${c.reset}`);
+      process.exit(1);
+    }
+
+    if (anyUnreachable) {
+      // I-1/I-8: network/5xx/shape — the key MIGHT be fine, we just couldn't
+      // reach the provider. Degrade honestly (no misleading "shape changed"
+      // warning — discoverModels was called with quiet:true) and continue on
+      // the format-only check.
+      console.log(`${c.yellow}  ${SYM.warn} Couldn't verify your key(s) online (no network / provider unreachable) — skipping the live check. Format checks passed, so continuing.${c.reset}`);
+    } else if (allOk) {
+      console.log(`  ${c.green}${SYM.ok} ${verdicts.length === 1 ? 'Key authenticates' : 'All keys authenticate'}.${c.reset}`);
+    }
+  }
+
+  if (keyMode.mode === 'single') {
+    const missingPair = REQUIRED_PROVIDERS.filter(p => !providerKey[p]).map(p => PROVIDER_LABELS[p]).join(' or ') || 'OpenAI or Gemini';
+    console.log(`\n${c.yellow}${SYM.warn} Single-key mode (${PROVIDER_LABELS[keyMode.present[0]]} only): query validation and competitor extraction run on ONE model.${c.reset}`);
+    console.log(`${c.yellow}  Competitor mentions will be marked "unverified" — no second model to cross-check them.${c.reset}`);
+    console.log(`${c.yellow}  Add a ${missingPair} key any time to upgrade verification.${c.reset}`);
+  }
+
+  console.log(`\n${c.green}Configured providers: ${Object.keys(providerKey).map(p => PROVIDER_LABELS[p]).join(', ')}${c.reset}`);
+
+  // Init no longer chooses models. Models are discovered fresh at each
+  // `aeo-tracker run` via lib/providers/discover.js (HTTP fetch of /v1/models
+  // per provider + regex sort). Init just seeds `.aeo-tracker.json` with
+  // FALLBACK defaults — used only if discovery fails (provider down / network).
+  console.log(`\n${c.dim}Models will be discovered dynamically at each \`run\` (HTTP fetch of /v1/models per provider).${c.reset}`);
+
+  /** @type {Object<string,{model:string,classifyModel:string,env:string}>} */
+  const selectedProviders = {};
+  for (const [p, envName] of Object.entries(providerKey)) {
+    const fb = MODEL_FALLBACK[p];
+    if (!fb) continue;
+    selectedProviders[p] = {
+      model: fb.main,
+      classifyModel: fb.classify,
+      env: envName,
+    };
+  }
+
+  // Step 4 — manual or auto
+  let mode;
+  if (nonInteractive) {
+    mode = opts.auto ? 'auto' : 'manual';
+  } else {
+    const modeAns = (await ask(
+      `\nHow should I configure queries and competitors?\n  [1] Auto — analyze my site with an LLM and suggest\n  [2] Manual — I'll type them\nChoose [1/2] (Enter = 1): `,
+      '1'
+    )).trim();
+    mode = modeAns === '2' ? 'manual' : 'auto';
+  }
+
+  let queries = [];
+  let categoryDescription = '';
+  let suggestionLang = '';
+  let config_candidatePool = [];
+  // 1.1.8: verdicts from the substitution-block validation, threaded into the
+  // main validation as its cache. ONE validation, one source of truth — the
+  // old `validationCache: []` re-roll let a non-deterministic classifier flip
+  // a borderline verdict between two calls ("validated then re-rejected").
+  let config_validationSeedCache = [];
+  // Parallel to `queries`, carries the intent bucket per selected query.
+  // Used by validator-recovery to enforce intent-diversity when auto-swapping
+  // blocked queries. Populated only in the --auto research pipeline path;
+  // stays empty in manual / --keywords / single-shot modes — recovery falls
+  // back to highest-score ranking when intents are unknown.
+  let config_queryIntents = [];
+  // AP-SEGMENT-LIVE: query-text → brand-fit label (core/adjacent/aspirational/
+  // unknown), accumulated from the candidates the research pipeline classified
+  // (annotateBrandFit) and the persisted candidatePool. At save time it stamps
+  // the label onto config.queries (attachBrandFit) so `run` carries it into each
+  // result and the report's dormant core/aspirational segment block wakes. Keyed
+  // by text so it survives hand-edits and validator-recovery swaps (the swapped-
+  // in pool entry carries its own brandFit). Empty in manual/--keywords/--light
+  // modes → queries stay bare strings, segmentation stays gracefully dormant.
+  const config_queryBrandFits = new Map();
+  const noteBrandFit = (text, fit) => {
+    if (typeof text === 'string' && text.trim() && typeof fit === 'string' && fit.trim()) {
+      config_queryBrandFits.set(text, fit.trim().toLowerCase());
+    }
+  };
+  // 1.0.6: count of commercial candidates passing both validator stages.
+  // Set inside the silent-substitution block; threaded into recovery panel
+  // so the "X of 5 commercial candidates" header is honest.
+  let config_commercialPassingCount = null;
+
+  // P2: BYO keywords (`--keywords="q1,q2,q3"`) — skip brainstorm entirely, $0 LLM cost
+  if (opts.keywords) {
+    const list = String(opts.keywords).split(',').map(s => s.trim()).filter(Boolean);
+    if (list.length !== 3) {
+      console.error(`${c.red}--keywords requires exactly 3 comma-separated queries (got ${list.length})${c.reset}`);
+      process.exit(1);
+    }
+    queries = list;
+    console.log(`\n${c.green}Using --keywords (BYO mode, $0 LLM cost):${c.reset}`);
+    queries.forEach((q, i) => console.log(`  Q${i + 1}: ${queryText(q)}`));
+    mode = 'keywords';
+  }
+
+  if (mode === 'auto') {
+    const researchProviders = await listResearchProviders(providerKey, selectedProviders);
+    if (researchProviders.length === 0) {
+      console.log(`${c.yellow}No LLM-capable provider configured (need OpenAI, Anthropic, or Gemini). Falling back to manual.${c.reset}`);
+    } else {
+      const primaryForDisplay = researchProviders[0];
+      // P1.6: privacy reassurance
+      console.log(`\n${c.bold}Auto-suggest will:${c.reset}`);
+      console.log(`  1. Fetch ${fullUrl} from your machine`);
+      console.log(`  2. Extract title, meta, headings, first 2KB of body text`);
+      console.log(`  3. Send that excerpt to ${primaryForDisplay.label} (${primaryForDisplay.model}) via YOUR API key`);
+      if (researchProviders.length > 1) {
+        const fallbacks = researchProviders.slice(1).map(p => p.label).join(', ');
+        console.log(`     ${c.dim}(falls back to ${fallbacks} if the primary provider has a billing/auth/rate-limit issue)${c.reset}`);
+      }
+      console.log(`  4. Show you the suggested queries + competitors before saving`);
+      console.log(`  ${c.dim}Your API key never leaves this machine. No telemetry. No analytics. No traffic to webappski.com.${c.reset}`);
+      const go = (nonInteractive ? 'y' : (await ask(`Continue? [Y/n] `, 'y'))).trim();
+      if (!/^n/i.test(go)) {
+        try {
+          process.stdout.write(`${c.dim}  Fetching ${fullUrl}...${c.reset} `);
+          // 1.1.8 (F4): fetchSite now climbs a resilience ladder (retry →
+          // browser-UA → paused retry) instead of dying on the first attempt.
+          // Last rung lives here: --auto + --category can proceed WITHOUT the
+          // site excerpt; only a truly unanchorable run aborts — with ONE
+          // copy-paste next command instead of a wall of options.
+          let html = '';
+          let degradedNoSite = false;
+          {
+            let fetchResult = null;
+            try {
+              fetchResult = await fetchSite(fullUrl);
+            } catch (fetchErr) {
+              console.log(`${c.yellow}fetch failed: ${errMsg(fetchErr)}${c.reset}`);
+              if (nonInteractive && opts.category) {
+                degradedNoSite = true;
+                console.log(`${c.yellow}  ${SYM.warn} Proceeding WITHOUT site content (brand + domain + --category only). Query precision is reduced — consider re-running init when the site is reachable.${c.reset}`);
+              } else if (nonInteractive) {
+                console.error(`${c.red}Site unreachable and no --category given — nothing to anchor query generation.${c.reset}`);
+                console.error(`${c.red}Rerun with your niche as the anchor:${c.reset}`);
+                console.error(`${c.dim}  aeo-platform init --yes --auto --brand=${brand} --domain=${domain} --category="<your niche in one phrase>"${c.reset}`);
+                process.exit(1);
+              } else {
+                throw fetchErr; // TTY → existing manual-input fallback
+              }
+            }
+            if (fetchResult) {
+              html = fetchResult.html;
+              console.log(`(${html.length.toLocaleString()} bytes, via ${fetchResult.finalUrl})`);
+              if (fetchResult.botBlocked) {
+                console.log(`${c.yellow}  ${SYM.warn} AEO finding #1: ${fullUrl} rejected our declared bot User-Agent but served a browser UA.${c.reset}`);
+                console.log(`${c.yellow}    The search-index crawlers that gate citations (OAI-SearchBot, PerplexityBot, Claude-SearchBot, Googlebot) are likely blocked the same way — fix those rules first. Training-only crawlers (GPTBot, ClaudeBot, Google-Extended) do not affect whether AI answers cite you.${c.reset}`);
+              }
+            }
+          }
+
+          const site = parseSiteContent(html);
+          const issues = degradedNoSite ? [] : detectSiteIssues(site, html);
+          if (issues.includes('BOT_PROTECTED')) console.log(`  ${c.yellow}${SYM.warn} Bot protection detected (Cloudflare). Content may be unreliable.${c.reset}`);
+          if (issues.includes('SPA_OR_EMPTY')) console.log(`  ${c.yellow}${SYM.warn} Site looks JS-rendered (SPA). Auto-suggest may produce generic results.${c.reset}`);
+          if (issues.includes('TINY_HTML')) console.log(`  ${c.yellow}${SYM.warn} Very little HTML returned (${html.length} bytes).${c.reset}`);
+          if (issues.length > 0 && !nonInteractive) {
+            const cont = (await ask(`Continue anyway? [y/N] `, 'n')).trim();
+            if (!/^y/i.test(cont)) throw new Error('user aborted after site issues');
+          }
+
+          // P0.4: brand-on-site check (skipped when running without site content).
+          // allSiteText doesn't depend on brand, so re-entering the brand below
+          // just re-checks it against the same already-fetched content — no refetch.
+          const allSiteText = `${site.title} ${site.metaDesc} ${(site.h1 || []).join(' ')} ${(site.h2 || []).join(' ')} ${site.text || ''}`;
+          while (!degradedNoSite && !textMentionsBrand(allSiteText, brandTerms(brand))) {
+            if (nonInteractive) {
+              console.log(`${c.yellow}${SYM.warn} Brand "${brand}" not found anywhere on ${fullUrl}.${c.reset}`);
+              break;
+            }
+            const choice = await promptBrandNotFound({ brand, fullUrl, ask, useColor: USE_COLOR });
+            if (choice.action === 'manual') throw new Error('aborted: brand not found on site');
+            if (choice.action === 'continue') break;
+            brand = choice.brand;
+            if (!brand) { console.error(`${c.red}Brand is required${c.reset}`); process.exit(1); }
+          }
+
+          // Single spinner instance for the whole auto-suggest attempt — hoisted
+          // above the retry loop (was created only inside the full-pipeline
+          // branch) so it also covers cleanCategory and the post-pipeline
+          // validation/top-up steps below, which used to run with zero progress
+          // feedback (the exact "looks frozen" complaint that started this).
+          // start() fully resets state each call, so reuse across multiple
+          // provider attempts / phases is behaviourally identical to fresh
+          // instances — see lib/util/spinner.js.
+          const autoSpinner = createSpinner();
+
+          // P1: category description — the single most important disambiguator.
+          // Webappski case showed that a brand like "AEO services" can match the wrong industry
+          // (customs) without an explicit category. Priority: --category flag > interactive prompt > auto-infer.
+          let autoCategory = inferCategory(site, brand);
+          // 1.1.8 (F5): inferCategory returns a title+meta marketing sentence —
+          // compress it to a 2-5 word noun phrase via one tiny LLM call. A clean
+          // phrase anchors the brainstorm better AND survives the recovery
+          // panel's ≤4-word category-filler guard. Falls back to the raw string.
+          if (!opts.category && autoCategory && autoCategory.split(/\s+/).length > 4 && researchProviders[0]) {
+            const { cleanCategory } = await import('../lib/init/clean-category.js');
+            // One-model classify task — CLASSIFY_PROVIDER_PRIORITY order (Gemini
+            // first), not researchProviders[0] (which is PROVIDER_PRIORITY/
+            // OpenAI-first, correct for the main-tier brainstorm call above but
+            // not for this cheap string-compaction step).
+            const rp = pickClassifyProvider(researchProviders) || researchProviders[0];
+            const isTTY = !!process.stdout.isTTY;
+            autoSpinner.start('[category] compressing description...');
+            if (!isTTY) console.log(`${c.dim}  [category] compressing description...${c.reset}`);
+            const compact = await cleanCategory({
+              rawCategory: autoCategory, site, brand,
+              provider: { ...rp, model: rp.classifyModel || rp.model },
+            });
+            autoSpinner.stop(compact
+              ? `${c.dim}  [category] compressed → "${compact}"${c.reset}`
+              : `${c.dim}  [category] compression skipped — keeping auto-inferred description${c.reset}`);
+            if (compact) autoCategory = compact;
+          }
+          const audienceTags = detectAudience(site);
+          const geoTags = detectGeography(domain, site);
+          if (opts.category) {
+            categoryDescription = opts.category.trim();
+            console.log(`${c.dim}  Category (from --category flag): ${categoryDescription}${c.reset}`);
+          } else if (nonInteractive) {
+            categoryDescription = autoCategory;
+            console.log(`${c.yellow}  No --category flag — using auto-inferred from site:${c.reset}`);
+            console.log(`    "${categoryDescription}"`);
+            console.log(`${c.dim}  Pass --category="..." next time to override if this is off.${c.reset}`);
+          } else {
+            console.log(`\n${c.bold}What does your company do?${c.reset} (one sentence — used to disambiguate queries)`);
+            console.log(`${c.dim}  Auto-inferred from your site:${c.reset}`);
+            console.log(`    "${autoCategory}"`);
+            const answer = (await ask(`  Press Enter to accept, or type a custom description: `, '')).trim();
+            categoryDescription = answer || autoCategory;
+          }
+          if (audienceTags.length > 0) console.log(`${c.dim}  Detected audience: ${audienceTags.join(', ')}${c.reset}`);
+          if (geoTags.length > 0) console.log(`${c.dim}  Detected geography: ${geoTags.join(', ')}${c.reset}`);
+
+          // LLM retry loop: walk researchProviders in priority order. Success
+          // on any provider sets `llmSucceeded = true` and exits the loop.
+          // Billing/auth/rate-limit errors are logged and we try the next
+          // provider. Non-retryable errors (real bugs, malformed requests)
+          // bubble to the outer catch so they're not silently swallowed.
+          const attempts = [];
+          let llmSucceeded = false;
+
+          for (let i = 0; i < researchProviders.length; i++) {
+            const primary = researchProviders[i];
+            const validator = researchProviders.find((_, j) => j !== i) || null;
+
+            if (i === 0 && !validator) {
+              console.log(`${c.yellow}  ${SYM.warn} Cross-model validation skipped — only one LLM provider available (single-model bias risk).${c.reset}`);
+            }
+            if (i > 0) {
+              console.log(`${c.dim}  Retrying brainstorm with ${primary.label}...${c.reset}`);
+            }
+
+            try {
+              // --light flag: fall back to v0.4.x single-shot suggest (faster, cheaper, less thorough)
+              if (opts.light) {
+                const { suggestConfig, detectAmbiguousQueries } = await import('../lib/init/suggest.js');
+                if (i === 0) console.log(`${c.dim}  [light mode] single-shot suggest — no brainstorm, no validation${c.reset}`);
+                const s = await suggestConfig({
+                  brand, domain, site, categoryDescription,
+                  providerCall: (p, k, m) => primary.providerCall(p, k, m, { webSearch: false }),
+                  apiKey: primary.apiKey, model: primary.model,
+                  onAttempt: ({ estimate }) => console.log(`${c.dim}  Asking ${primary.label}... (~$${estimate.usd.toFixed(4)})${c.reset}`),
+                });
+                queries = s.queries;
+                suggestionLang = s.language || site.lang;
+                const ambiguous = detectAmbiguousQueries(queries);
+                if (ambiguous.length > 0) {
+                  console.log(`${c.yellow}  ${SYM.warn} ${ambiguous.length} ambiguous acronyms detected — consider --auto (full research) next time${c.reset}`);
+                }
+              } else {
+                // Full research pipeline (v0.5 default)
+                const { research } = await import('../lib/init/research/research.js');
+                const { selectTopThree, formatSelection, compareCandidates, applySelectionFloor, SELECTION_MIN_SCORE } = await import('../lib/init/research/select.js');
+
+                if (i === 0) console.log(`${c.dim}  [full pipeline] brainstorm → filter → score → cross-model validate${c.reset}`);
+                const t0 = Date.now();
+                const researchResult = await research({
+                  brand, domain, site, category: categoryDescription,
+                  audienceTags, geoTags,
+                  primary, validator,
+                  logPhase: makePipelineReporter(autoSpinner),
+                });
+                const selectResult = selectTopThree(researchResult.candidates, { validationSkipped: !validator });
+                const elapsed = Date.now() - t0;
+
+                console.log(`\n${c.dim}  pipeline complete in ${elapsed}ms, est cost ~$${researchResult.trace.estimatedCostUsd.toFixed(4)}${c.reset}\n`);
+
+                // 1.0.6 — commercial-only over-generate + silent substitution.
+                // Replaces 1.0.4 Fix A (pool validation) + 1.0.5 top-up. With
+                // brainstorm now producing only 5 commercial candidates (3 needed
+                // + 2 spares), we validate all 5 through both stages here and
+                // silently substitute failing top-3 with passing spares. User
+                // sees ONLY the final 3 — no recovery panel for the common case.
+                //
+                // This is a classify task (validity + search_behavior judgement),
+                // not generation — same reasoning as cleanCategory's call site
+                // above: pick the classify-tier PROVIDER (CLASSIFY_PROVIDER_PRIORITY
+                // order, not researchProviders[0]'s PROVIDER_PRIORITY order) and
+                // remap to its classifyModel. Fixes a real bug: this used to run
+                // on researchProviders[0]'s flagship/search model — needlessly slow
+                // (30-50s on gpt-5-search-api) for a yes/no classification call.
+                const validationProvider = pickClassifyProvider(researchProviders) || researchProviders[0];
+                const primaryForValidation = validationProvider
+                  ? { ...validationProvider, model: validationProvider.classifyModel || validationProvider.model }
+                  : null;
+                const allFive = [
+                  ...selectResult.selected.map(s => s.candidate),
+                  ...selectResult.alternatives,
+                ];
+                let commercialPassingCount = null;
+                if (allFive.length >= 3 && primaryForValidation?.providerCall) {
+                  const isTTY = !!process.stdout.isTTY;
+                  autoSpinner.start('[validate] checking commercial intent...');
+                  if (!isTTY) console.log(`${c.dim}  [validate] checking commercial intent...${c.reset}`);
+                  try {
+                    const { runTwoStageValidation, SEARCH_BEHAVIORS } =
+                      await import('../lib/init/research/run-validation.js');
+                    const validation = await runTwoStageValidation({
+                      queries: allFive.map(c => c.text),
+                      brand, domain, category: categoryDescription,
+                      geography: geoTags || [],
+                      primary: primaryForValidation,
+                      secondary: null,
+                      validationCache: [],
+                      commercialOnly: false,
+                    });
+                    const verdicts = validation.updatedCache || [];
+                    if (verdicts.length === 0) {
+                      // Empty verdicts (validator returned nothing without throwing
+                      // — e.g. throttled). Treat as skipped to avoid silently
+                      // accepting un-validated queries.
+                      throw new Error('Validation returned no verdicts');
+                    }
+                    // Attach the full verdict on each candidate. `valid` is
+                    // required by isVerifiedSubstitute (llm-blocker recovery).
+                    for (const c of allFive) {
+                      const verdict = verdicts.find(v => v.query === c.text);
+                      if (verdict) {
+                        c.search_behavior = verdict.search_behavior;
+                        c.confidence = verdict.confidence;
+                        c.valid = verdict.valid;
+                      }
+                    }
+                    // 1.1.8: these verdicts seed the main validation's cache.
+                    config_validationSeedCache = verdicts;
+                    // 1.0.8 silent-substitution PASS — must use the SAME rules
+                    // as main validation (run-validation.js:186 + :194). Earlier
+                    // versions checked only search_behavior, which allowed
+                    // valid:false queries through substitution; main validation
+                    // then rejected them, breaking the contract.
+                    //
+                    // Rules now in lockstep:
+                    //   - main llmIssues filter: !valid → block
+                    //   - main informationalIssues filter: search_behavior !== RETRIEVAL → block
+                    //   - substitution PASS: NOT in either filter
+                    //
+                    // Legacy graceful: if no verdict entry exists (cache miss),
+                    // pass through — same as 1.0.7 behaviour. If verdict exists
+                    // but lacks `valid` (legacy pre-1.0.8 cache shape), fail
+                    // closed — `verdict.valid === true` is false for undefined.
+                    const PASS = (c) => {
+                      const verdict = verdicts.find(v => v.query === c.text);
+                      if (!verdict) return true;  // graceful: no verdict → pass through
+                      return verdict.valid === true
+                          && verdict.search_behavior === SEARCH_BEHAVIORS.RETRIEVAL;
+                    };
+                    const passing = allFive.filter(PASS);
+                    commercialPassingCount = passing.length;
+                    autoSpinner.stop(`${c.dim}  [validate] done — passed=${commercialPassingCount}/${allFive.length}${c.reset}`);
+
+                    // 1.1.8 top-up: fewer than 3 passing → ONE extra brainstorm
+                    // round steered by the rejection reasons (which used to be
+                    // computed, printed, and thrown away). Bounded: one round,
+                    // then the recovery panel fires as before if still short.
+                    if (passing.length < 3) {
+                      try {
+                        const { topUpCommercialCandidates } = await import('../lib/init/research/topup.js');
+                        const isPass = (vd) => vd.valid === true && vd.search_behavior === SEARCH_BEHAVIORS.RETRIEVAL;
+                        const avoidFeedback = verdicts.filter(vd => !isPass(vd)).map(vd => ({
+                          query: vd.query,
+                          reason: vd.reason
+                            || (vd.search_behavior && vd.search_behavior !== SEARCH_BEHAVIORS.RETRIEVAL
+                              ? `non-commercial (search_behavior: ${vd.search_behavior})`
+                              : 'failed validation'),
+                        }));
+                        console.log(`${c.dim}  Only ${passing.length} of ${allFive.length} candidates passed — running one top-up round with rejection feedback...${c.reset}`);
+                        autoSpinner.start('[topup] brainstorming replacement queries...');
+                        const topUp = await topUpCommercialCandidates({
+                          brand, domain, site, categoryDescription, audienceTags, geoTags,
+                          avoidFeedback,
+                          existingTexts: allFive.map(cand => cand.text),
+                          provider: primaryForValidation,
+                          validateBatch: async (qs) => {
+                            autoSpinner.update('[topup] validating replacement queries...');
+                            const vTop = await runTwoStageValidation({
+                              queries: qs, brand, domain, category: categoryDescription,
+                              geography: geoTags || [], primary: primaryForValidation,
+                              secondary: null, validationCache: [], commercialOnly: false,
+                            });
+                            return vTop.updatedCache || [];
+                          },
+                        });
+                        autoSpinner.stop();
+                        config_validationSeedCache = [...config_validationSeedCache, ...topUp.verdicts];
+                        if (topUp.added.length > 0) {
+                          console.log(`${c.dim}  Top-up added ${topUp.added.length} validated candidate(s).${c.reset}`);
+                          passing.push(...topUp.added);
+                          allFive.push(...topUp.added);
+                          commercialPassingCount = passing.length;
+                        } else if (topUp.attempted.length > 0) {
+                          console.log(`${c.yellow}  Top-up round produced no passing candidates (${topUp.attempted.length} tried).${c.reset}`);
+                        }
+                      } catch (topUpErr) {
+                        autoSpinner.stop();
+                        console.error(`${c.yellow}  Top-up skipped: ${errMsg(topUpErr)}${c.reset}`);
+                      }
+                    }
+
+                    if (commercialPassingCount >= 3) {
+                      // Happy path — re-sort passing by score (brand-fit as
+                      // tiebreaker via the shared comparator), then apply the same
+                      // quality floor as selectTopThree so weak queries (score <
+                      // SELECTION_MIN_SCORE) are demoted to alternatives when there
+                      // are ≥3 stronger ones.
+                      passing.sort(compareCandidates);
+                      const floored = applySelectionFloor(passing);
+                      selectResult.selected = floored.picks.map(c => ({
+                        intent: c.intent || 'commercial',
+                        candidate: c,
+                        fallbackUsed: null,
+                      }));
+                      selectResult.alternatives = floored.rest.map(c => ({ ...c }));
+                      if (floored.weakBasket) {
+                        console.log(`${c.yellow}  ${SYM.warn} Basket is weak — only ${floored.aboveFloor} of ${passing.length} queries clear the quality floor (score ≥ ${SELECTION_MIN_SCORE}); consider refining your company description.${c.reset}`);
+                      }
+                    }
+                    // ELSE <3 passing: leave selectResult as-is; recovery panel
+                    // will fire downstream with the honest "X of 5" message.
+                  } catch (err) {
+                    autoSpinner.stop();
+                    console.error(`${c.yellow}  Validation skipped: ${errMsg(err)}${c.reset}`);
+                  }
+                }
+                selectResult.commercialPassingCount = commercialPassingCount;
+                config_commercialPassingCount = commercialPassingCount;
+
+                // Display selected + alternatives — formatSelection sees the
+                // post-substitution result. All commercial intent.
+                for (const line of formatSelection(selectResult)) console.log(line);
+
+                const accept = (nonInteractive ? 'y' : (await ask(`\nAccept selected queries? [Y]es / [e]dit / [n]o: `, 'y'))).trim();
+                if (/^e/i.test(accept)) {
+                  const edited = [];
+                  for (let j = 0; j < selectResult.selected.length; j++) {
+                    const cand = selectResult.selected[j].candidate;
+                    const v = (await ask(`  Q${j + 1} [${cand.text}]: `, cand.text)).trim();
+                    edited.push(v || cand.text);
+                  }
+                  queries = edited;
+                } else if (!/^n/i.test(accept)) {
+                  queries = selectResult.selected.map(s => s.candidate.text);
+                }
+
+                // Capture intent per final query for validator-recovery. When user
+                // edited a query by hand, text may not match any candidate — intent
+                // falls back to the slot's selected candidate intent (best effort).
+                config_queryIntents = queries.map((qt, i) => {
+                  const match = selectResult.selected.find(s => s.candidate.text === qt);
+                  return match?.candidate.intent || selectResult.selected[i]?.candidate.intent || '';
+                });
+
+                // AP-SEGMENT-LIVE: record each classified candidate's brand-fit
+                // label, keyed by text. Both the selected triplet and the pool
+                // (the validator-recovery swap source) are recorded so any final
+                // query — selected, edited-to-match, or recovery-substituted —
+                // resolves its label at save time.
+                for (const s of selectResult.selected) noteBrandFit(s.candidate?.text, s.candidate?.brandFit);
+                for (const a of selectResult.alternatives) noteBrandFit(a?.text, a?.brandFit);
+
+                // Persist candidate pool for future swap-without-LLM (D3).
+                // 1.0.4 Fix A.1b: include search_behavior + confidence when
+                // pool-validation succeeded so the recovery panel filter and
+                // the (validated) tag stay honest after reload.
+                // 1.0.4 pool-topup: carry topUp flag for traceability —
+                // distinguishes appended top-up entries from original research
+                // candidates in diff/report tooling.
+                if (selectResult.alternatives.length > 0) {
+                  config_candidatePool = selectResult.alternatives.slice(0, 5).map(a => ({
+                    text: a.text,
+                    intent: a.intent,
+                    score: a.score,
+                    unverified: !!a.unverified,
+                    ...(a.search_behavior ? {
+                      search_behavior: a.search_behavior,
+                      confidence: a.confidence,
+                    } : {}),
+                    // 1.1.8: carry the verdict's valid flag — required by
+                    // isVerifiedSubstitute for llm-blocker recovery.
+                    ...(typeof a.valid === 'boolean' ? { valid: a.valid } : {}),
+                    // AP-FIX-BRANDFIT: cache the fit label so validator-recovery
+                    // (tryAutoRecover) uses it as the score-tie tiebreaker when
+                    // auto-swapping a blocked query — same ranking signal as
+                    // select.js, no reclassification between runs.
+                    ...(a.brandFit ? { brandFit: a.brandFit } : {}),
+                    ...(a.topUp ? { topUp: true } : {}),
+                  }));
+                }
+                suggestionLang = site.lang || 'en';
+              }
+
+              llmSucceeded = true;
+              break;
+            } catch (llmErr) {
+              const classified = classifyProviderError(llmErr);
+              attempts.push({
+                provider: primary.name,
+                label: primary.label,
+                envVar: providerKey[primary.name] || null,
+                rawError: errMsg(llmErr),
+                classified,
+              });
+
+              if (!classified.retryable) {
+                // Not a billing/auth/rate-limit issue — this is a real bug.
+                // Surface the full context (which providers we tried first,
+                // and why each failed) BEFORE rethrowing, so the user sees
+                // the same actionable panel they'd see for all-retryable
+                // failures — just followed by the raw bug for the developer
+                // to file. Previously this block dropped `attempts` on the
+                // floor and the user saw only the final TypeError.
+                if (attempts.length > 1) {
+                  for (const line of formatResearchFailurePanel({
+                    attempts, brand, domain: fullUrl, useColor: USE_COLOR,
+                  })) {
+                    console.log(line);
+                  }
+                  console.log(`${c.dim}  The last attempt above (${primary.label}) failed with an unclassified error that's likely a bug in aeo-tracker. Raw message follows.${c.reset}`);
+                  console.log('');
+                }
+                throw llmErr;
+              }
+
+              console.log(`${c.yellow}  ${primary.label} failed: ${classified.reason}${c.reset}`);
+              if (i < researchProviders.length - 1) {
+                console.log(`${c.dim}  Trying next provider in priority order...${c.reset}`);
+              }
+            }
+          }
+
+          if (!llmSucceeded) {
+            // Every research provider returned a billing/auth/rate-limit error.
+            // Show the actionable panel so the user has a copy-pastable path
+            // to success instead of a bare "aborting" message.
+            for (const line of formatResearchFailurePanel({
+              attempts, brand, domain: fullUrl, useColor: USE_COLOR,
+            })) {
+              console.log(line);
+            }
+            if (nonInteractive) {
+              console.error(`${c.red}Non-interactive mode — cannot prompt for manual input. Aborting.${c.reset}`);
+              process.exit(1);
+            }
+            console.log(`${c.dim}  Falling back to manual input.${c.reset}`);
+          }
+        } catch (err) {
+          // Non-retryable errors from LLM loop (real bugs) OR errors from the
+          // fetch/parse/category steps above. Both land here; we show the same
+          // message, since it's a hard failure either way.
+          console.log(`${c.yellow}  Auto-suggest failed: ${errMsg(err)}${c.reset}`);
+          if (nonInteractive) {
+            console.error(`${c.red}Cannot fall back to manual in non-interactive mode. Aborting.${c.reset}`);
+            process.exit(1);
+          }
+          console.log(`${c.dim}  Falling back to manual input.${c.reset}`);
+        }
+      }
+    }
+  }
+
+  // Manual fallback
+  if (queries.length === 0) {
+    if (nonInteractive) {
+      console.error(`${c.red}No queries — non-interactive --manual mode requires pre-configured queries (not yet supported via flags). Use --auto or drop --yes.${c.reset}`);
+      process.exit(1);
+    }
+    console.log(`\n${c.bold}Enter 3 unbranded test queries:${c.reset}`);
+    console.log(`${c.dim}  Templates:${c.reset}`);
+    console.log(`${c.dim}    Commercial:    "best <your category> 2026"${c.reset}`);
+    console.log(`${c.dim}    Informational: "how to <problem you solve>"${c.reset}`);
+    console.log(`${c.dim}    Vertical:      "<your category> for <audience>"${c.reset}`);
+    for (let i = 1; i <= 3; i++) {
+      const label = i === 1 ? 'commercial' : i === 2 ? 'informational' : 'vertical';
+      const q = (await ask(`  Q${i} (${label}): `, '')).trim();
+      if (q) queries.push(q);
+    }
+  }
+
+  // P0.2: final queries guard
+  if (queries.length !== 3) {
+    console.error(`${c.red}Error: need exactly 3 queries, got ${queries.length}. Aborting without saving config.${c.reset}`);
+    process.exit(1);
+  }
+
+  // Two-stage validation (static acronym + LLM industry-fit). Single shared helper —
+  // see lib/init/research/run-validation.js. Cache written to config below so `run`
+  // can trust verdicts without re-paying $0.005 on every invocation.
+  const validationProviders = await buildResearchProviders(providerKey, selectedProviders);
+  const _geoForValidation = (typeof geoTags !== 'undefined' && geoTags) ? geoTags : detectGeography(domain, {});
+  const recovery = await runValidationWithRecovery({
+    queries,
+    queryIntents: config_queryIntents,
+    candidatePool: config_candidatePool,
+    brand, domain,
+    category: categoryDescription,
+    geography: _geoForValidation,
+    primary: validationProviders.primary,
+    secondary: validationProviders.validator,
+    // 1.1.8 (F1): seeded with the substitution-block verdicts — ONE validation,
+    // one source of truth. The old `[]` re-roll let a non-deterministic
+    // classifier flip a borderline verdict between two calls, so the pipeline
+    // selected a trio and then rejected its own selection. Strict mode skips
+    // the seed: its contract is a fresh two-model cross-check, which a cache
+    // hit would short-circuit.
+    validationCache: opts.strictValidation ? [] : config_validationSeedCache,
+    nonInteractive,
+    force: opts.force,
+    strictValidation: opts.strictValidation,
+    ask, useColor: !!c.red,
+    commercialPassingCount: config_commercialPassingCount,  // 1.0.6
+  });
+  if (recovery.recoveryFailed) {
+    // Panel already printed. Exit with code 1 — validation failed, user has
+    // a copy-paste command to retry.
+    process.exit(1);
+  }
+  queries = recovery.queries;
+  const validation = recovery.v;
+
+  // AP-SEGMENT-LIVE: stamp the brand-fit label onto the saved basket. Queries
+  // with a recognised label become {q,brandFit}; unclassified queries stay bare
+  // strings (back-compat — a basket where nothing was classified is byte-
+  // identical to the historical shape). `run` reads these via normalizeQueries
+  // and attaches `brandFit` to each result → the report's core/aspirational
+  // segment block wakes. The headline UVI is untouched: brandFit never enters
+  // the score math, only the additive representativeness display.
+  const queriesToSave = attachBrandFit(queries, config_queryBrandFits);
+
+  // Persist provider defaults. `selectedProviders` was seeded from FALLBACK
+  // constants in lib/providers/discover.js — these defaults are the safety net
+  // when `aeo-tracker run` discovery cannot reach a provider's /v1/models endpoint.
+  // Actual model selection happens fresh at each run via discoverModels.
+  const providers = selectedProviders;
+
+  // v0.7 — initialise basket version on first save. History mirrors the active
+  // basket shape (objects included) so a later --add-queries dedup compares
+  // like-for-like.
+  const { initialBasket } = await import('../lib/init/basket-history.js');
+  const basketInit = initialBasket(queriesToSave, new Date().toISOString().slice(0, 10));
+
+  const config = {
+    brand, domain, category: categoryDescription || '',
+    queries: queriesToSave, regressionThreshold: 10, providers,
+    ...basketInit,
+  };
+  if (config_candidatePool.length > 0) {
+    config.candidatePool = config_candidatePool;
+  }
+  // Persist validation verdicts so `run` can trust them without re-paying per invocation.
+  if (validation?.updatedCache?.length > 0) {
+    config.validationCache = validation.updatedCache;
+  }
+
+  // D2: atomic write — unique-suffix (fail-branch #8), matching the
+  // _summary.json writers (lib/util/atomic-write.js) instead of a fixed `.tmp`.
+  await atomicWriteJson(CONFIG_FILE, config);
+
+  console.log(`\n${c.green}${SYM.ok} Created ${CONFIG_FILE}${c.reset}`);
+  console.log(`  Brand: ${brand} | Domain: ${domain}`);
+  console.log(`  Queries: ${queries.length}, Providers: ${Object.keys(providers).length}`);
+  console.log(`\nNext: ${c.cyan}aeo-platform run${c.reset}\n`);
+}
+
+// Maps model ID prefixes to short display labels. More specific entries first.
+const MODEL_SHORT_LABELS = [
+  [/^gpt-5-search-api/,          'gpt/5-search'],
+  [/^gpt-5\.(\d+)-(mini|nano|pro)/, (_, v, t) => `gpt/5.${v}-${t}`],
+  [/^gpt-5\.(\d+)/,              (_, v) => `gpt/5.${v}`],
+  [/^gpt-5-(mini|nano)/,         (_, t) => `gpt/5-${t}`],
+  [/^gpt-5/,                     'gpt/5'],
+  [/^gpt-4o-(mini|search)/,      (_, t) => `gpt/4o-${t}`],
+  [/^gpt-4o/,                    'gpt/4o'],
+  [/^gpt-/,                      'gpt/'],
+  [/^claude-(haiku|sonnet|opus)/, (_, t) => `claude/${t}`],
+  [/^gemini-(\d+\.\d+)-(pro|flash)/, (_, v, t) => `gemini/${v}-${t}`],
+  [/^gemini-(\d+\.\d+)/,         (_, v) => `gemini/${v}`],
+  [/^sonar-(reasoning-pro|pro)/,  (_, t) => `sonar/${t}`],
+  [/^sonar/,                     'sonar'],
+];
+
+function _modelColLabel(provider, modelId) {
+  const clean = modelId
+    .replace(/-preview$/, '')
+    .replace(/-\d{4}-\d{2}-\d{2}$/, '')
+    .replace(/-\d{8}$/, '');
+  for (const [pattern, label] of MODEL_SHORT_LABELS) {
+    if (pattern.test(clean)) {
+      return typeof label === 'function' ? clean.replace(pattern, label) : label;
+    }
+  }
+  return `${provider}/${clean}`;
+}
+
+async function cmdRun(options = {}) {
+  const silent = options.json === true;
+  const origLog = console.log;
+  const origWrite = process.stdout.write.bind(process.stdout);
+  if (silent) {
+    console.log = () => {};
+    process.stdout.write = () => true;
+  }
+
+  // Shared prompter for the only interactive prompt in this command — the
+  // --depth=auto stale-baseline confirmation. The top-level dispatcher always
+  // creates this; a fallback createPrompter() here would be a second readline
+  // on the same stdin (the exact regression that 1.0.2 fixed). Direct callers
+  // (tests, programmatic embedding) must inject their own prompter.
+  if (!options.prompter) {
+    throw new Error('cmdRun: options.prompter is required (the dispatcher in bin/aeo-tracker.js wires this; tests must pass createPrompter({...}))');
+  }
+  const ask = options.prompter.ask;
+
+  // Load config
+  if (!existsSync(CONFIG_FILE)) {
+    console.error(`${c.red}No ${CONFIG_FILE} found. Run: aeo-platform init${c.reset}`);
+    process.exit(1);
+  }
+
+  const config = await readConfigOrExit();
+  // Apply --openai-model / --gemini-model / etc. overrides BEFORE destructuring
+  // providerConfig — overrides mutate config.providers in place so downstream
+  // provider discovery picks up the user's chosen model. Disk config is not
+  // touched; this is per-run only.
+  // AEO_<PROVIDER>_MODEL_PIN env vars are the durable form of the same pin —
+  // a CLI flag only lasts one invocation, but an automated caller (a cron, a
+  // director agent) has no flag to type. CLI flag still wins when both are
+  // set. Added 2026-09-08: GPT generation 6 shipped with exactly one model,
+  // `gpt-6-astra` ($10/$50 per 1M — flagship pricing, no recognised cheap
+  // tier per MAIN_CHEAP_TIER below), so discovery's own "newest generation
+  // always wins" rule (intentional, see lib/providers/discover.js) would pick
+  // it and pay flagship rates. AEO_OPENAI_MODEL_PIN=gpt-5.6-luna holds our own
+  // runs on the cheap tier until a real gpt-6 cheap variant exists — remove
+  // the pin (or extend MAIN_CHEAP_TIER) once one does.
+  const cliModelOverrides = {
+    openaiModel:     options.openaiModel     || process.env.AEO_OPENAI_MODEL_PIN,
+    geminiModel:     options.geminiModel     || process.env.AEO_GEMINI_MODEL_PIN,
+    anthropicModel:  options.anthropicModel  || process.env.AEO_ANTHROPIC_MODEL_PIN,
+    perplexityModel: options.perplexityModel || process.env.AEO_PERPLEXITY_MODEL_PIN,
+  };
+  applyCliModelOverrides(config, cliModelOverrides);
+  // Kept SEPARATELY from the config mutation above: once the flag is written
+  // into providers.<name>.model it is indistinguishable from a value that was
+  // simply sitting in .aeo-tracker.json, and live discovery is allowed to
+  // override the latter. That collapse is why --openai-model was a documented
+  // no-op — see cliModelPins() in lib/config.js.
+  const modelPins = cliModelPins(cliModelOverrides);
+  const { brand, domain, queries: rawQueries, providers: providerConfig } = config;
+  const brandAliases = Array.isArray(config.brandAliases) ? config.brandAliases : [];
+
+  if (!brand || !domain || !rawQueries?.length) {
+    console.error(`${c.red}Invalid config. brand, domain, and queries are required.${c.reset}`);
+    process.exit(1);
+  }
+
+  // v0.4 — normalise queries to support both string and {q, tag} forms.
+  // The `texts` array is what the rest of the run loop iterates over (no
+  // structural change downstream); `tags` and `brandFits` are looked up by
+  // index when results are written. `brandFits` carries the persisted
+  // core/adjacent/aspirational label (AP-FIX-BRANDFIT) into the report so it
+  // can segment Score without re-running research.
+  const { texts: queries, tags: queryTags, brandFits: queryBrandFits, hasTags } = normalizeQueries(rawQueries);
+
+  // MEAS-1 — basket manifest. Every cell this run writes carries the STABLE id
+  // of its question (hash of the normalised text) and the market the config
+  // DECLARES for it, so a later comparison lines two runs up by question rather
+  // than by array position (`Q12`), and can restrict itself to one market
+  // without re-deriving the market from the answers. The manifest is optional:
+  // without it the ids are still written (identity survives), only the declared
+  // market is unknown.
+  // A config can be marked superseded rather than deleted (`_deprecated`) —
+  // two configs for the same brand is how a basket ends up measured twice under
+  // two different question sets. Say it at the top of the run, before any money
+  // is spent, and name the canonical one.
+  if (config._deprecated) {
+    const d = config._deprecated;
+    console.warn(`\n${c.yellow}  ${SYM.warn} This config is marked superseded${d.since ? ` (since ${d.since})` : ''}.${c.reset}`);
+    if (d.reason) console.warn(`${c.dim}    ${d.reason}${c.reset}`);
+    if (d.canonicalConfig) console.warn(`${c.dim}    Canonical config: ${d.canonicalConfig}${c.reset}`);
+  }
+
+  const basketManifest = config.basketManifest || null;
+  const basketIdx = manifestIndex(basketManifest);
+  if (basketManifest) {
+    const drift = verifyManifest(basketManifest, rawQueries);
+    if (!drift.ok) {
+      console.warn(`${c.yellow}  ${SYM.warn} Basket manifest is out of date: ${drift.missing.length} question${drift.missing.length === 1 ? '' : 's'} not listed, ${drift.extra.length} listed but no longer asked.${c.reset}`);
+      console.warn(`${c.dim}    Declared markets for the unlisted questions will read as unknown. Regenerate with: node scripts/build-basket-manifest.mjs <config>${c.reset}`);
+    }
+  } else if (queries.length > 0) {
+    // No manifest → every declared market reads as unknown, and the report can
+    // only segment by markets it INFERRED from the answers. That is a silent
+    // degradation unless it is said, which is the whole point of this work.
+    // Ids are still written, so comparison by question keeps working.
+    console.log(`${c.dim}  No basket manifest in the config — question ids are still recorded, but declared markets are unknown. Add one: node scripts/build-basket-manifest.mjs ${CONFIG_FILE}${c.reset}`);
+  }
+  // Always, manifest or not: `run` is the command that WRITES into whichever
+  // tree the shell is standing in, so it is the one that most needs to say
+  // when that is not the basket's canonical tree.
+  warnIfNotCanonicalRunRoot(config, 'run');
+  /** Declared market for a question text — from the manifest only, never guessed. */
+  const declaredMarketFor = (text) => basketIdx.byText.get(normalizeQueryText(text))?.market ?? null;
+
+  if (hasTags) {
+    console.log(`${c.dim}Funnel/intent tags: ${[...new Set(queryTags.filter(Boolean))].join(', ')}${c.reset}`);
+  }
+
+  // v0.4 — parse --geo / --regions flag here; the cost-warn line is emitted
+  // *after* provider discovery so we can include activeProviders.length in the
+  // message (referencing it before the const declaration would TDZ-crash).
+  // `--regions` is an operator-facing alias for `--geo` (AP-REGION-LANG-MATRIX);
+  // both feed the same parser. --geo wins if both are passed (back-compat).
+  let regionsToRun = [null];
+  let parsedGeo = null;
+  const geoRaw = options.geo || options.regions;
+  if (geoRaw) {
+    parsedGeo = parseGeoFlag(geoRaw);
+    if (parsedGeo.invalid && parsedGeo.invalid.length > 0) {
+      console.warn(`${c.yellow}  Unknown region codes ignored: ${parsedGeo.invalid.join(', ')} (valid: ${listRegionCodes()})${c.reset}`);
+    }
+    if (parsedGeo.regions && parsedGeo.regions.length > 0) {
+      regionsToRun = parsedGeo.regions;
+    }
+  }
+
+  // AP-REGION-LANG-MATRIX — optional --lang axis. Asks each region's query IN
+  // the locale language (localised preamble) instead of the default English
+  // market-instruction, so the model reaches locale-native sources (the PL/DACH
+  // beachhead signal). --lang is a PARAMETER of the region axis, not a new
+  // multiplication axis: each region carries ONE language, so cell count stays
+  // (regions × samples) — no combinatorial blow-up. Ignored with no --regions.
+  let langsToRun = [];
+  if (options.lang) {
+    const parsedLang = parseLangFlag(options.lang);
+    if (parsedLang.invalid && parsedLang.invalid.length > 0) {
+      console.warn(`${c.yellow}  Unknown lang codes ignored (degrade to English): ${parsedLang.invalid.join(', ')} (valid: ${listLangCodes()})${c.reset}`);
+    }
+    langsToRun = parsedLang.langs;
+    if (langsToRun.length > 0 && regionsToRun.length === 1 && regionsToRun[0] === null) {
+      console.warn(`${c.yellow}  --lang has no effect without --regions (it localises the per-region preamble). Ignored.${c.reset}`);
+      langsToRun = [];
+    }
+  }
+
+  // Resolve replay mode early — when active, we skip the live `/v1/models`
+  // discovery HTTP and build providers from `.aeo-tracker.json` cfg.model
+  // directly. Rationale: `--replay [--replay-from=DATE]` is a user-explicit
+  // contract ("use cached responses, don't hit live APIs"); discovery is a
+  // live API hit. Skipping it in replay mode keeps the offline contract
+  // coherent. The replay seam at line ~2026 (`_tryReplay`) is filename-keyed
+  // by `provider.model`, so the configured model name is all we need.
+  // See PITFALLS.md "2026-05-20 — Replay mode НЕ skip live model discovery".
+  let replaySrcDate = null;
+  if (options.replay) {
+    replaySrcDate = await _resolveReplaySource(options.replayFrom, domain);
+    if (!replaySrcDate) {
+      console.error(`${c.red}--replay: no compatible prior run found for ${domain}${c.reset}`);
+      process.exit(1);
+    }
+    console.log(`${c.yellow}  [replay] serving cached responses from ${responseDateDirForRead(domain, replaySrcDate)}/${c.reset}\n`);
+  }
+
+  const activeProviders = [];
+  // Overridden view of providerConfig fed to downstream single-run consumers
+  // (in-run query validation, competitor extraction) so they see the SAME
+  // freshly-discovered model/classifyModel this loop just resolved, instead of
+  // each re-deriving their own (stale, or previously not even receiving
+  // providerConfig at all — see the validation call site below). Defaults to
+  // providerConfig unchanged in replay mode, where no live discovery runs.
+  let resolvedProviderConfig = providerConfig;
+  if (replaySrcDate) {
+    // Replay mode: skip live `/v1/models` discovery — use cfg.model from
+    // .aeo-tracker.json verbatim. activeProviders shape must match the live
+    // branch below (used by `_tryReplay`, per-cell loop, scheduler).
+    // apiKey is still read from env so downstream extraction calls have a
+    // value to send; if the user has fake keys, extraction will 401 inside
+    // the per-cell try/catch → mention='error' → exit 3 (NOT exit 1).
+    console.log(`\n${c.dim}Replay mode: skipping live model discovery (using cfg.model from config).${c.reset}`);
+    for (const [name, cfg] of Object.entries(providerConfig || DEFAULT_CONFIG.providers)) {
+      const envKey = cfg.env || `${name.toUpperCase()}_API_KEY`;
+      const apiKey = process.env[envKey];
+      if (!apiKey) {
+        console.log(`${c.dim}  skip ${name} — no ${envKey}${c.reset}`);
+        continue;
+      }
+      const modelId = cfg.model;
+      if (!modelId) {
+        console.log(`${c.dim}  skip ${name} — no cfg.model in .aeo-tracker.json (re-run: aeo-platform init)${c.reset}`);
+        continue;
+      }
+      const trainingModel = deriveTrainingModel(name, modelId);
+      console.log(`  ${c.green}${SYM.ok}${c.reset} ${name}: ${modelId} ${c.dim}(replay)${c.reset}`);
+      activeProviders.push({
+        name,
+        model: modelId,
+        trainingModel,
+        classifyModel: cfg.classifyModel || MODEL_FALLBACK[name]?.classify,
+        mainOptions: MAIN_OPTIONS_BY_PROVIDER[name] || {},
+        colLabel: _modelColLabel(name, modelId),
+        apiKey,
+        ...PROVIDERS[name],
+      });
+    }
+  } else {
+    // Live mode: discover current search-capable models for each configured
+    // provider. Parallel HTTP fetch of /v1/models (~1-2s total with 10s
+    // per-provider timeout). Fallback chain on failure:
+    //   - 401/403 (authError) → skip provider entirely (same bad key for run
+    //                          would fail too)
+    //   - other failure → fallback to cfg.model from .aeo-tracker.json
+    //   - cfg.model also missing → skip with hint to re-init
+    console.log(`\n${c.dim}Discovering current models…${c.reset}`);
+    const discoveryResults = await Promise.all(
+      Object.entries(providerConfig || DEFAULT_CONFIG.providers).map(async ([name, cfg]) => {
+        try {
+          const envKey = cfg.env || `${name.toUpperCase()}_API_KEY`;
+          const apiKey = process.env[envKey];
+          if (!apiKey) return { name, cfg, skip: 'no-key', envKey };
+          // Main and classify tiers discovered in parallel — same live-vs-hardcode
+          // treatment for both now, where classify used to have none at all.
+          // A pinned provider ALSO gets the raw catalogue, so a pin naming a
+          // model the key can no longer see fails loudly BEFORE the first paid
+          // call rather than being quietly swapped for something else.
+          const [mainResult, classifyResult, catalogue] = await Promise.all([
+            discoverModels(name, apiKey, cfg.baseURL),
+            discoverClassifyModel(name, apiKey, cfg.baseURL),
+            modelPins[name] ? listModelIds(name, apiKey, cfg.baseURL) : Promise.resolve({ ids: null, authError: false }),
+          ]);
+          return {
+            name, cfg, apiKey,
+            models: mainResult.models, authError: mainResult.authError,
+            classifyModels: classifyResult.models,
+            catalogueIds: catalogue.ids,
+          };
+        } catch (err) {
+          // Defensive per-task catch: ensures one crash doesn't break Promise.all.
+          return { name, cfg, skip: 'crash', err };
+        }
+      }),
+    );
+
+    // Overrides collected here (main-tier as before; classify-tier newly) and
+    // applied to resolvedProviderConfig once, after the loop — this is what
+    // buildResearchProviders/buildExtractionProviders read below instead of
+    // re-deriving their own (previously stale/inconsistent) resolution.
+    const providerOverrides = {};
+    // Pins whose id is provably absent from the provider's own catalogue.
+    // Collected here, refused after the loop — one message listing every bad
+    // pin beats failing on whichever provider happened to be iterated first.
+    const deadPins = [];
+
+    for (const r of discoveryResults) {
+      if (r.skip === 'no-key') {
+        console.log(`${c.dim}  skip ${r.name} — no ${r.envKey}${c.reset}`);
+        continue;
+      }
+      if (r.skip === 'crash') {
+        console.error(`  ${c.yellow}${SYM.warn}${c.reset} ${r.name} — discovery crashed: ${r.err?.message}. Skipping.${c.reset}`);
+        continue;
+      }
+      if (r.authError) {
+        console.error(`  ${c.red}${SYM.err}${c.reset} ${r.name} — invalid API key (HTTP 401/403). Skipping this provider.${c.reset}`);
+        continue;
+      }
+      // Explicit --<provider>-model pin wins outright; else discovery; else
+      // cfg.model. The precedence lives in resolveRunModels() (lib/config.js)
+      // so it is unit-testable without a network — this stays a thin caller.
+      const pinnedModel = modelPins[r.name] || null;
+      const { models: finalModels, source: modelSource } = resolveRunModels({
+        pinnedModel, discovered: r.models, cfgModel: r.cfg.model,
+      });
+      if (!finalModels?.length) {
+        console.log(`${c.dim}  skip ${r.name} — discovery failed and no fallback (re-run: aeo-platform init)${c.reset}`);
+        continue;
+      }
+      // A pin the provider no longer lists: refuse rather than substitute. The
+      // catalogue is null when it could not be read (Perplexity's /models 404s
+      // routinely) — unknown is not absent, so that case proceeds.
+      if (pinnedModel && Array.isArray(r.catalogueIds) && !r.catalogueIds.includes(pinnedModel)) {
+        deadPins.push({ provider: r.name, pinned: pinnedModel, catalogue: r.catalogueIds });
+      }
+      // Classify tier keeps its extra fallback rung (discovered → cfg → hardcode)
+      // — unlike main, which has always stopped at cfg.model with no further
+      // hardcode rung inside this loop (the provider is just skipped instead).
+      const resolvedClassifyModel = (r.classifyModels && r.classifyModels[0])
+        || r.cfg.classifyModel
+        || MODEL_FALLBACK[r.name]?.classify;
+      const classifySourceLabel = r.classifyModels ? '' : ' (fallback)';
+      // Naming the SOURCE is the point: the operator has to be able to see, in
+      // the run log, whether the id being measured on came from their flag,
+      // from the live catalogue, or from a config file that may be months old.
+      const sourceLabel = modelSource === 'cli-pin'
+        ? ` ${c.dim}(pinned by --${r.name}-model)${c.reset}`
+        : modelSource === 'config' ? ` ${c.dim}(fallback)${c.reset}` : '';
+      console.log(`  ${c.green}${SYM.ok}${c.reset} ${r.name}: ${finalModels.join(', ')}${sourceLabel}${c.dim} · classify: ${resolvedClassifyModel}${classifySourceLabel}${c.reset}`);
+
+      providerOverrides[r.name] = { model: finalModels[0], classifyModel: resolvedClassifyModel };
+
+      for (const modelId of finalModels) {
+        // trainingModel = the no-search variant, used by `--depth=full`. null
+        // means the provider has no training-data mode (e.g. Perplexity).
+        const trainingModel = deriveTrainingModel(r.name, modelId);
+        activeProviders.push({
+          name: r.name,
+          model: modelId,
+          trainingModel,
+          classifyModel: resolvedClassifyModel,
+          mainOptions: MAIN_OPTIONS_BY_PROVIDER[r.name] || {},
+          colLabel: _modelColLabel(r.name, modelId),
+          apiKey: r.apiKey,
+          ...PROVIDERS[r.name],
+        });
+      }
+    }
+
+    // A pin the provider does not list is a hard stop, and it happens HERE —
+    // after discovery (free GETs), before the first billed answer call. Silently
+    // measuring on some other model is the original defect; so is charging the
+    // operator for a run that answers a different question than they asked.
+    if (deadPins.length > 0) {
+      for (const p of deadPins) {
+        const near = p.catalogue.filter(id => id.startsWith(String(p.pinned).split('-')[0])).slice(0, 8);
+        console.error(`${c.red}  --${p.provider}-model=${p.pinned} — this key's /models catalogue does not list that id.${c.reset}`);
+        if (near.length) console.error(`${c.dim}    Available on this key: ${near.join(', ')}${c.reset}`);
+      }
+      console.error(`${c.red}  Refusing to run: substituting a different model would measure something other than what you asked for.${c.reset}`);
+      process.exit(1);
+    }
+
+    // Build the overridden config view — shallow clone per provider so we don't
+    // mutate the caller's providerConfig object in place.
+    const baseProviders = providerConfig || DEFAULT_CONFIG.providers;
+    resolvedProviderConfig = Object.fromEntries(
+      Object.entries(baseProviders).map(([name, cfg]) => [
+        name,
+        providerOverrides[name] ? { ...cfg, ...providerOverrides[name] } : cfg,
+      ]),
+    );
+  }
+
+  if (activeProviders.length === 0) {
+    console.error(`${c.red}No API keys found. Set at least one: OPENAI_API_KEY, GEMINI_API_KEY, ANTHROPIC_API_KEY, or PERPLEXITY_API_KEY${c.reset}`);
+    process.exit(1);
+  }
+
+  // v0.4 — geo cost warning, deferred until after provider discovery so the
+  // message can include the real provider count.
+  if (parsedGeo && parsedGeo.regions && parsedGeo.regions.length > 0) {
+    const codes = regionsToRun.map(r => r.code).join(', ');
+    const multiplier = regionsToRun.length;
+    console.log(`${c.yellow}  --regions=${codes} → ${multiplier}× cost (${multiplier} regions × ${queries.length} queries × ${activeProviders.length} providers)${c.reset}`);
+    if (langsToRun.length > 0) {
+      // Honesty: name exactly what --lang changes (soft geo, not a real geo-signal).
+      const perRegion = regionsToRun.map(r => `${r.code}→${resolveRegionLang(r, langsToRun)}`).join(', ');
+      console.log(`${c.dim}  --lang=${langsToRun.join(',')} → each region's query asked in: ${perRegion}. This localises the prompt language only — provider APIs expose no per-request geo/IP signal, so this is "ask as a local would phrase it", not a geolocated request.${c.reset}`);
+    }
+  }
+
+  // v0.3 — depth selection: web (default) | full | auto.
+  //   web   → current behaviour, single web-search pass per cell.
+  //   full  → adds a training-data pass (webSearch:false) where the provider
+  //           supports it. Cost ~doubles for the supported providers.
+  //   auto  → defaults to `web`, but prompts the user once if the last
+  //           training-data baseline is stale (>14 days) so corpus drift
+  //           gets re-measured at a sparse cadence.
+  const requestedDepth = (options.depth || 'web').toLowerCase();
+  let depth = requestedDepth === 'full' ? 'full' : 'web';
+  if (requestedDepth === 'auto') {
+    const stalenessDays = await _readLastFullRunStaleness(domain);
+    const shouldPrompt = stalenessDays === null || stalenessDays >= 14;
+    if (shouldPrompt) {
+      const trainingProviders = activeProviders.filter(p => p.trainingModel);
+      const ageHint = stalenessDays === null
+        ? 'never run'
+        : `${stalenessDays}d ago`;
+      const ans = (await ask(
+        `${c.yellow}Last training-data baseline ${ageHint}. ` +
+        `Refresh now? +${trainingProviders.length}× provider calls per cell. [y/N] ${c.reset}`,
+        'n',
+      )).trim().toLowerCase();
+      if (ans === 'y' || ans === 'yes') depth = 'full';
+    }
+  }
+  const modesToRun = depth === 'full' ? ['web', 'training'] : ['web'];
+  if (depth === 'full') {
+    const trainingProviders = activeProviders.filter(p => p.trainingModel).map(p => p.name);
+    const skippedProviders = activeProviders.filter(p => !p.trainingModel).map(p => p.name);
+    console.log(`${c.yellow}  --depth=full → 2 passes per cell (web + training-data on ${trainingProviders.join(', ')}; ${skippedProviders.length > 0 ? `skipped: ${skippedProviders.join(', ')}` : 'all providers covered'}). Cost ~2× web-only.${c.reset}`);
+  }
+
+  // AP-MEASURE-SAMPLING-CI — resolve --samples (never-fail: garbage/over-cap
+  // degrades to a sane value). Default 1 → single-shot, byte-identical (R39).
+  // The ×N cost disclaimer prints BEFORE any call (mirrors the --geo warn) so
+  // the operator sees the multiplier with eyes open. resolveSamples already
+  // clamps; we surface a one-line note when the raw flag was silently clamped.
+  const samples = resolveSamples(options.samples);
+  if (samples > 1) {
+    const cellsApprox = queries.length * activeProviders.length * modesToRun.length;
+    console.log(
+      `${c.yellow}  --samples=${samples} → each cell queried ${samples}× ` +
+      `(~${cellsApprox * samples} answer calls vs ${cellsApprox} single-shot; ~${samples}× cost). ` +
+      `Presence gets a Wilson confidence interval; a noisy flip no longer trips a false regression.${c.reset}`,
+    );
+    const rawN = Math.floor(Number(options.samples));
+    if (Number.isFinite(rawN) && rawN > MAX_SAMPLES) {
+      console.log(`${c.yellow}  (requested ${rawN} samples — capped at MAX_SAMPLES=${MAX_SAMPLES} as a cost-stop.)${c.reset}`);
+    }
+  }
+
+  const date = new Date().toISOString().split('T')[0];
+  const responseDir = responseDateDirForWrite(domain, date);
+  await mkdir(responseDir, { recursive: true });
+
+  // AP-RATELIMIT-UX: seed the TPM ledger with limits learned in prior runs so
+  // we pace from a known ceiling instead of re-discovering it via a fresh 429.
+  // Best-effort — a missing/corrupt ledger file degrades to learn-from-scratch.
+  const seededLimits = await loadLedger();
+  if (seededLimits > 0 && !options.json) {
+    console.log(`${c.dim}Loaded ${seededLimits} learned rate-limit${seededLimits !== 1 ? 's' : ''} from prior runs${c.reset}`);
+  }
+
+  console.log(`\n${c.bold}aeo-platform — run${c.reset}`);
+  console.log(`${c.dim}Brand: ${brand} | Domain: ${domain} | Date: ${date}${c.reset}`);
+  console.log(`${c.dim}Models: ${activeProviders.map(p => p.colLabel).join(', ')}${c.reset}`);
+  console.log(`${c.dim}Queries: ${queries.length}${c.reset}\n`);
+
+  // Pre-flight ETA: warn if any selected model has TPM headroom too small for
+  // this run (will be paced across multiple 60s windows). Tone: honest "this
+  // will take ~N seconds", not panicking ⚠ — the adaptive scheduler (below)
+  // guarantees the run COMPLETES regardless.
+  if (!options.json) {
+    const cmdKey = options.depth === 'full' ? 'run-depth-full'
+      : options.strictValidation ? 'run-strict' : 'run';
+    const pacedLines = [];
+    for (const p of activeProviders) {
+      // thinkingActive — single source of truth in main-options.js.
+      // Same predicate used by any future init/preview hint, so ETA shown
+      // upfront matches actual runtime spend.
+      const eta = estimateRunDuration(p.name, p.model, cmdKey, {
+        thinkingActive: detectThinkingActive(p.name, p.model),
+      });
+      if (eta.mode === 'paced') {
+        pacedLines.push(`${p.name}/${p.model}: paced across ~${eta.etaSeconds}s (tier 1: ${eta.limit.tpm.toLocaleString()} TPM)`);
+      }
+    }
+    if (pacedLines.length > 0) {
+      process.stderr.write(`${c.dim}Pacing to fit rate limits:${c.reset}\n`);
+      for (const line of pacedLines) process.stderr.write(`${c.dim}  ${line}${c.reset}\n`);
+      process.stderr.write(`${c.dim}  Tip: --openai-model gpt-5 (no web search, 15× higher TPM) skips pacing.${c.reset}\n\n`);
+    }
+  }
+
+  // Pre-flight: two-stage validation with cache lookup.
+  // Cache-hit (validated at init) → trust, no LLM cost.
+  // Cache-miss (user hand-edited .aeo-tracker.json) → auto-run LLM validator inline
+  // with visible cost, abort if any query fails. --force skips the whole gate.
+  {
+    // Bug fix (found while tracing classify-model resolution paths): this call
+    // used to omit the 3rd arg entirely, so it silently built providers from
+    // DEFAULT_CONFIG.providers — ignoring the user's actual .aeo-tracker.json
+    // model choices for in-run query validation. Now passes the SAME freshly
+    // resolved config the main discovery loop just built.
+    const runProviders = await buildResearchProviders(Object.fromEntries(
+      Object.entries(resolvedProviderConfig || {}).map(([name, cfg]) => [name, cfg.env || `${name.toUpperCase()}_API_KEY`])
+    ), resolvedProviderConfig);
+    await runValidationFlow({
+      queries,
+      brand, domain,
+      category: config.category || '',
+      geography: [], // run-time has no site context; cache usually covers this
+      primary: runProviders.primary,
+      secondary: runProviders.validator,
+      validationCache: config.validationCache || [],
+      nonInteractive: true,       // run is always "CI-like" — no interactive prompt during API spend
+      force: options.force,
+      strictValidation: options.strictValidation,
+      ask,
+    });
+  }
+
+  // Resolve competitor-extraction providers (see buildExtractionProviders:
+  // two → cross-check, one → single-model unverified, zero → throw). Done
+  // up-front so a no-key client sees the error BEFORE any paid API calls.
+  let extractionProviders;
+  try {
+    extractionProviders = await buildExtractionProviders(resolvedProviderConfig);
+  } catch (err) {
+    console.error(`\n${c.red}${SYM.err} ${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+  console.log(`${c.dim}  Extractor: ${extractionProviders.secondary
+    ? `${extractionProviders.primary.model} + ${extractionProviders.secondary.model} (parallel cross-check)`
+    : `${extractionProviders.primary.model} (single-model — competitor mentions will be unverified)`}${c.reset}\n`);
+
+  // NOTE — the automatic same-day skip/resume cache was removed deliberately.
+  // It keyed "already done" cells by POSITION (`Q1:region:provider:model:mode`)
+  // with no query text and no domain, so a second run in the same working
+  // directory — a different domain, or the same domain with an edited/reordered
+  // query — silently inherited the earlier run's answers (the cross-domain
+  // bleed bug). Every cell now always fires a fresh live call (or an explicit
+  // `--replay` read). Interrupted runs re-query from scratch; correctness beats
+  // the resume shortcut. `--force` now only bypasses the validation gate.
+  // Domain isolation (aeo-responses/<domain>/<date>/) additionally guarantees a
+  // fresh run overwrites only THIS domain's summary.
+
+  // Replay mode: replaySrcDate was resolved earlier (before model discovery)
+  // so the replay branch could skip the live `/v1/models` HTTP. See the block
+  // ~1720 for the resolution + provider-build logic.
+
+  // Run all checks via the adaptive scheduler. Tasks are collected with their
+  // (provider, model) ledger key — `planSchedule` packs each (provider, model)
+  // bucket into 60s TPM windows. Buckets run in parallel; tasks within a
+  // bucket fire per the plan, semaphore-limited downstream.
+  //
+  // Live-row UI: each task gets a row that animates while running and shows
+  // live cooldown/pacing countdowns. `--json` mode skips live entirely (stdout
+  // reserved for the JSON blob). Non-TTY consumers get a structured start/finish
+  // log per task via the manager's non-animate path.
+  const results = [];
+  /** @type {Map<string, Array<{fn: () => Promise<void>, estimatedTokens: number}>>} */
+  const tasksByCdKey = new Map();
+  // AP-MEASURE-SAMPLING-CI — when samples>1, each cell's N trial outcomes land
+  // here keyed by stable cell key, then collapse to ONE record after the
+  // scheduler drains. Empty (and unused) on the single-shot default path.
+  /** @type {Map<string, Array<object>>} */
+  const cellTrials = new Map();
+  // Extraction cost accumulates across all cells (each cell fires two LLM calls).
+  const extractionCostTotal = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
+  // AP-RATELIMIT-UX: tally rate-limit events per engine across the whole run so
+  // the end-of-run summary can show «engine X hit N cooldowns» — otherwise the
+  // pacing/cooldown is only visible as transient live-row text that scrolls away.
+  /** @type {Map<string, {cooldowns:number, ledgerWaits:number, retries:number}>} */
+  const rateLimitEvents = new Map();
+  const bumpRateLimit = (provider, field) => {
+    const key = provider || 'unknown';
+    const e = rateLimitEvents.get(key) || { cooldowns: 0, ledgerWaits: 0, retries: 0 };
+    e[field]++;
+    rateLimitEvents.set(key, e);
+  };
+  // Answer-surface model-drift tally: when a provider serves a different model
+  // lineage than we requested on an ANSWER cell (floating-alias hot-swap), the
+  // trend would silently shift month-to-month. Record one entry per
+  // (provider, requested→resolved) pair so the end-of-run summary can name it.
+  /** @type {Map<string, {provider:string, requested:string, resolved:string, count:number}>} */
+  const modelDriftEvents = new Map();
+  const live = options.json ? null : createLiveRows({ stream: process.stderr });
+  const liveTasksBuffer = [];
+
+  for (let qi = 0; qi < queries.length; qi++) {
+    const baseQuery = queries[qi];
+    for (const region of regionsToRun) {
+      // AP-REGION-LANG-MATRIX — resolve the language for THIS region from
+      // --lang (empty → 'en' → byte-identical English preamble, R39).
+      const regionLang = resolveRegionLang(region, langsToRun);
+      const query = wrapQueryForRegion(baseQuery, region, regionLang);
+      for (const provider of activeProviders) {
+        for (const mode of modesToRun) {
+          // training-data pass is skipped for providers that don't support it
+          // (e.g. Perplexity is search-only by design).
+          if (mode === 'training' && !provider.trainingModel) continue;
+          const cellModelForKey = mode === 'training' ? provider.trainingModel : provider.model;
+          const cdKey = `${provider.name}:${cellModelForKey}`;
+          const regionTag = region ? `[${region.code.toUpperCase()}]` : '';
+          const modeTag   = mode === 'training' ? '[T]' : '';
+          const tag = `Q${qi + 1}${regionTag}${modeTag}/${provider.colLabel}`;
+          // taskId includes region for --geo uniqueness — same (cdKey, queryIdx)
+          // appears twice with --geo=us,uk and we'd otherwise overwrite each other.
+          const baseTaskId = `${cdKey}#${qi}#${region?.code || ''}#${mode}`;
+          // AP-MEASURE-SAMPLING-CI — stable per-cell key (unique per query ×
+          // region × provider × model × mode, same uniqueness as baseTaskId).
+          // All N trials of a cell accumulate under this key, then collapse to
+          // ONE results[] record (the load-bearing «1 record/cell» invariant).
+          // The resume guard below independently re-derives the 5-component cell
+          // key from record fields to dedup carried-over records.
+          const cellKey = baseTaskId;
+          if (samples > 1) cellTrials.set(cellKey, []);
+          // taskFn factory: one closure per trial. `trialSuffix` drives the raw-
+          // file name + replay read (`.t{trial}` for sampled, '' for single-
+          // shot); `taskId` is per-trial so live rows don't collide; `sink`
+          // routes the built record (single-shot → results[]; multi-trial → this
+          // cell's trial bucket). For samples=1 the suffix is '' and the sink is
+          // results[].push → byte-identical legacy path (R39).
+          const makeTaskFn = (taskId, trialSuffix, sink) => async () => {
+            const cellModel = mode === 'training' ? provider.trainingModel : provider.model;
+            // Main query call: inject mainOptions (reasoning_effort=high for
+            // OpenAI, thinking-enabled for Anthropic). Training call: keep clean
+            // (measure base training-corpus knowledge without reasoning influence).
+            // Per-provider regex gate in openai.js/anthropic.js silently drops
+            // incompatible options если model не поддерживает.
+            const callOpts  = mode === 'training'
+              ? { webSearch: false }
+              : { ...(provider.mainOptions || {}) };
+            const t0 = Date.now();
+            try {
+              // In --json mode (live === null) stay silent — stdout is reserved
+              // for the final JSON blob, any human-readable line corrupts the
+              // consumer's parser. Live manager handles UI in interactive mode.
+              if (live) live.update(taskId, { status: 'running', detail: 'firing…' });
+
+              // Per-task status reporter: cooldown / ledger-wait / firing / retrying /
+              // tokens events from withProviderCall + withRetry → row updates.
+              // Counting (AP-RATELIMIT-UX) runs in BOTH live and --json modes; the
+              // live-row UI updates only when a live manager exists.
+              const onStatus = (ev) => {
+                if (ev.kind === 'cooldown')          bumpRateLimit(provider.name, 'cooldowns');
+                else if (ev.kind === 'ledger-wait')  bumpRateLimit(provider.name, 'ledgerWaits');
+                else if (ev.kind === 'retrying')     bumpRateLimit(provider.name, 'retries');
+                if (!live) return;
+                if (ev.kind === 'cooldown') {
+                  // 1.0.7: clear labels + live countdown. Operator sees the
+                  // seconds tick down (60s → 59s → 58s …) every render frame.
+                  // Clamp ms against negative / NaN so countdown never displays
+                  // "NaNs remaining" if upstream emits garbage.
+                  const ms = Math.max(0, Number.isFinite(ev.ms) ? ev.ms : 0);
+                  const sec = Math.ceil(ms / 1000);
+                  const prefix = 'provider cooldown (post-429 backoff) — ';
+                  live.update(taskId, {
+                    status: 'cooldown',
+                    labelPrefix: prefix,
+                    detail: `${prefix}${sec}s remaining`,
+                    deadlineMs: Date.now() + ms,
+                  });
+                } else if (ev.kind === 'ledger-wait') {
+                  const ms = Math.max(0, Number.isFinite(ev.ms) ? ev.ms : 0);
+                  const sec = Math.ceil(ms / 1000);
+                  const prefix = 'TPM rate-limit — ';
+                  live.update(taskId, {
+                    status: 'ledger-wait',
+                    labelPrefix: prefix,
+                    detail: `${prefix}${sec}s until token-bucket refill`,
+                    deadlineMs: Date.now() + ms,
+                  });
+                } else if (ev.kind === 'firing') {
+                  // 1.0.7: replace cryptic "firing…" with concrete action.
+                  live.update(taskId, { status: 'running', detail: 'calling provider API (network in-flight)' });
+                } else if (ev.kind === 'retrying') {
+                  live.update(taskId, { status: 'running', detail: `retrying (attempt ${ev.attempt})` });
+                } else if (ev.kind === 'tokens' && process.env.AEO_LOG_TOKENS === '1') {
+                  live.log(`  [tokens] ${ev.cdKey}: input=${ev.input} output=${ev.output} total=${ev.input + ev.output}`);
+                }
+              };
+
+              // Replay mode (see replay-mode block at top of file)
+              const replayed = replaySrcDate ? await _tryReplay(qi + 1, provider, replaySrcDate, trialSuffix, domain) : null;
+              // End replay
+              const { text, citations, raw } = replayed
+                || await provider.call(query, provider.apiKey, cellModel, { ...callOpts, onStatus });
+              const elapsedMs = Date.now() - t0;
+
+              // Answer-surface model-drift check. Only on LIVE answer cells:
+              //   - replay reads historical fixtures (no live model to drift),
+              //   - training cells measure a deliberately-different base model.
+              // When the provider served a different model lineage than we
+              // requested (floating-alias hot-swap), WARN loudly and stamp the
+              // record with requested vs resolved so the divergence is visible
+              // in the run JSON, not silent. Default policy is WARN+provenance
+              // (a benign roll-forward must not abort a legitimate run); a hard
+              // FAIL is opt-in via --strict-model-pin (handled after the loop).
+              // Decision is the pure evaluateModelDrift() (unit-tested); this
+              // block is a thin caller (house pattern — see silent-substitute).
+              let servedModel = null;
+              let isModelDriftCell = false;
+              if (!replayed && mode !== 'training') {
+                const drift = evaluateModelDrift(provider.name, cellModel, raw);
+                servedModel = drift.resolvedModel;
+                isModelDriftCell = drift.isDrift;
+                if (drift.isDrift) {
+                  const e = modelDriftEvents.get(drift.tallyKey)
+                    || { provider: provider.name, requested: cellModel, resolved: drift.resolvedModel, count: 0 };
+                  e.count++;
+                  modelDriftEvents.set(drift.tallyKey, e);
+                  if (live) live.log(`  ${c.yellow}[WARN] ${drift.warnLine}${c.reset}`);
+                  else if (!options.json) console.warn(`  [WARN] ${drift.warnLine}`);
+                  else process.stderr.write(`  [WARN] ${drift.warnLine}\n`);
+                }
+              }
+
+              // Save raw response — region + mode suffixes in filename so
+              // multi-region / dual-pass runs don't collide.
+              const safeModel = sanitizeForFilename(cellModel);
+              const regionSuffix = region ? `-${region.code}` : '';
+              const modeSuffix = mode === 'training' ? '-training' : '';
+              // trialSuffix is '' for single-shot (legacy filename) and
+              // `.t{trial}` for sampled cells — keeps each trial's raw response
+              // on disk and lets `--replay` re-serve the SAME trial set.
+              const rawFile = join(responseDir, `q${qi + 1}${regionSuffix}${modeSuffix}-${provider.name}-${safeModel}${trialSuffix}.json`);
+              await writeFile(rawFile, JSON.stringify(raw, null, 2));
+
+              const mention = detectMention(text, citations, brand, domain, brandAliases);
+              const position = mention === 'yes' ? findPosition(text, brand, domain, brandAliases) : null;
+              const adSignal = detectAdsInResponse(text, citations);
+
+              // Two-model LLM extraction + sentiment cross-check run in parallel
+              // — both hit classify-tier endpoints, no shared state. Sentiment is
+              // skipped (resolves to null) when the brand wasn't mentioned, saving
+              // ~$0.0008 per non-mention cell.
+              //   extraction.verified  = both models agreed (strong signal)
+              //   extraction.unverified = only one model agreed (weaker — dashed badge)
+              //
+              // Replay mode (1.1.1): extractor + sentiment are LIVE classify-tier
+              // calls — they hit OpenAI + Gemini even when the main provider.call
+              // was served from cache. Under `--network none` (Docker, air-gapped
+              // CI) they retry DNS failures as transient and hang for the full
+              // retry budget. Mirror the discovery-skip pattern from 1.1.0: when
+              // replay is active, short-circuit to empty shapes that the
+              // downstream code already handles (verified/unverified arrays both
+              // empty → `storeSources` is false → no source-list bloat;
+              // sentiment=null is already guarded everywhere it's read).
+              let extraction, sentiment, proseRank;
+              if (replaySrcDate) {
+                extraction = {
+                  verified: [],
+                  unverified: [],
+                  sources: {
+                    primary:   { model: '', brands: [] },
+                    secondary: { model: '', brands: [] },
+                  },
+                  costInfo: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+                };
+                sentiment = null;
+                proseRank = null;
+              } else {
+                const sentimentTask = (mention === 'yes' || mention === 'src')
+                  ? classifySentimentWithTwoModels({
+                      text, brand, domain,
+                      primary: extractionProviders.primary,
+                      secondary: extractionProviders.secondary,
+                    })
+                  : Promise.resolve(null);
+                // AP-PROSE-RANK — fire ONLY when the brand is named in the body
+                // (mention 'yes') but list-rank came back null (a prose answer).
+                // List answers already have an exact rank; non-mentions have no
+                // rank to find. This keeps the extra classify-tier call off the
+                // common paths (~$0.0008 only on prose-mention cells).
+                const proseRankTask = (mention === 'yes' && position === null)
+                  ? extractProseRankWithTwoModels({
+                      text, brand, domain,
+                      primary: extractionProviders.primary,
+                      secondary: extractionProviders.secondary,
+                    })
+                  : Promise.resolve(null);
+                [extraction, sentiment, proseRank] = await Promise.all([
+                  extractWithTwoModels({
+                    text, brand, domain,
+                    category: config.category || '',
+                    primary: extractionProviders.primary,
+                    secondary: extractionProviders.secondary,
+                  }),
+                  sentimentTask,
+                  proseRankTask,
+                ]);
+              }
+              const competitors = extraction.verified;
+              const competitorsUnverified = extraction.unverified;
+              const canonicalCitations = [...new Set(citations)];
+              // Categorise the response so the UI can distinguish "engine refused / returned nothing"
+              // from "engine wrote prose but no extractable list". The extraction union (verified +
+              // unverified) is the full set of names either model saw — best signal for quality.
+              const responseQuality = classifyResponseQuality({
+                text, citations,
+                competitors: [...competitors, ...competitorsUnverified],
+              });
+
+              const usage = extractUsage(provider.name, raw);
+              // Count the OpenAI web_search tool calls this response ACTUALLY made
+              // (Responses raw carries one `web_search_call` output item per search)
+              // and bill each. Reading the real count (0 for training/non-search,
+              // ≥1 for a forced search, >1 for multi-search) is honest and doesn't
+              // trust a `mode`/flag assumption. Search-SKU overrides (chat shape,
+              // no output[]) → count 0, but their pricing row's perRequest covers it.
+              const webSearchCalls = (provider.name === 'openai' && Array.isArray(raw?.output))
+                ? raw.output.filter(o => o?.type === 'web_search_call').length
+                : 0;
+              const calcd = calcCost(cellModel, usage, { webSearchCalls });
+              // Honesty (fail-branch #6): when the engine model is not in the
+              // pricing table, calcCost returns null. The old fallback set
+              // costUsd:0, which made an UNKNOWN cost render as «free» — a
+              // silent untruth. Carry costTracked:false so the session-cost
+              // summary can say «cost not tracked for: <model>» instead of $0.
+              let costInfo = calcd
+                ? { ...calcd, costTracked: true }
+                : { inputTokens: usage.inputTokens, outputTokens: usage.outputTokens, costUsd: 0, costTracked: false };
+              // Replay mode (see replay-mode block at top of file)
+              if (replayed) costInfo = { inputTokens: 0, outputTokens: 0, costUsd: 0, costTracked: true };
+              // End replay
+
+              // Extraction cost for this cell — tracked separately so we can report it
+              // aggregated at the bottom instead of per-cell.
+              extractionCostTotal.inputTokens  += extraction.costInfo.inputTokens  || 0;
+              extractionCostTotal.outputTokens += extraction.costInfo.outputTokens || 0;
+              extractionCostTotal.costUsd      += extraction.costInfo.costUsd      || 0;
+              if (sentiment && sentiment.costInfo) {
+                extractionCostTotal.inputTokens  += sentiment.costInfo.inputTokens  || 0;
+                extractionCostTotal.outputTokens += sentiment.costInfo.outputTokens || 0;
+                extractionCostTotal.costUsd      += sentiment.costInfo.costUsd      || 0;
+              }
+              if (proseRank && proseRank.costInfo) {
+                extractionCostTotal.inputTokens  += proseRank.costInfo.inputTokens  || 0;
+                extractionCostTotal.outputTokens += proseRank.costInfo.outputTokens || 0;
+                extractionCostTotal.costUsd      += proseRank.costInfo.costUsd      || 0;
+              }
+
+              // Store per-model extractionSources ONLY when the two models disagreed
+              // (something landed in the unverified tier). On unanimous agreement both
+              // source-lists equal `competitors`, so storing them is redundant and bloats
+              // the summary JSON ~3× across a year of weekly snapshots.
+              const storeSources = competitorsUnverified.length > 0
+                || !!extraction.sources.primary?.error
+                || !!extraction.sources.secondary?.error;
+              sink({
+                query: `Q${qi + 1}`,
+                queryText: baseQuery,
+                // MEAS-1/MEAS-3 — stable identity + declared market travel WITH
+                // the measurement. `query` stays the ordinal label every
+                // existing consumer reads; `queryId` is what a comparison keys
+                // on. Market is omitted (not null) when the manifest declares
+                // none, so a config without a manifest writes byte-identical
+                // records apart from the id.
+                queryId: queryIdFor(baseQuery),
+                ...(declaredMarketFor(baseQuery) ? { market: declaredMarketFor(baseQuery) } : {}),
+                provider: provider.name,
+                label: provider.label,
+                model: cellModel,
+                mode,                              // 'web' | 'training'
+                mention,
+                position,
+                citationCount: citations.length,
+                canonicalCitations,
+                competitors,
+                competitorsUnverified,
+                ...(storeSources ? { extractionSources: extraction.sources } : {}),
+                ...(sentiment ? { sentiment: { label: sentiment.label, confidence: sentiment.confidence, rationale: sentiment.rationale } } : {}),
+                // AP-PROSE-RANK — persist only when the prose pass produced a
+                // usable ordinal (rank present). A null-rank verdict carries no
+                // axis signal, so omitting it keeps the year-over-year JSON lean
+                // and a single-shot run without the pass has no field at all.
+                // Shared field-builder with run-manual (lib/report/prose-rank.js)
+                // so the two sinks can never drift.
+                ...proseRankField(proseRank),
+                ...(queryTags[qi] ? { tag: queryTags[qi] } : {}),
+                ...(queryBrandFits[qi] ? { brandFit: queryBrandFits[qi] } : {}),
+                ...(region ? { region: region.code, regionLabel: region.label } : {}),
+                // Only persist lang when it changed the prompt (non-English) —
+                // absence means the default English preamble (keeps lean JSON).
+                ...(region && regionLang && regionLang !== 'en' ? { lang: regionLang } : {}),
+                ...(adSignal.hasAdSignal ? { adMarkers: adSignal.adMarkers, adNetworkCitations: adSignal.adNetworkCitations } : {}),
+                responseQuality,
+                // Registrable-domain (eTLD+1) match — not raw substring — so a
+                // look-alike citation host (`domain.com.evil.com`) never counts
+                // as a brand citation. See lib/report/own-domain.js#isOwnDomain.
+                hasBrandInCitations: citations.some(u => isOwnDomain(u, domain)),
+                responseExcerpt: String(text || '').slice(0, 1500),
+                elapsedMs,
+                inputTokens: costInfo.inputTokens,
+                outputTokens: costInfo.outputTokens,
+                costUsd: costInfo.costUsd,
+                // Only persist when false — absence means tracked (keeps the
+                // year-over-year summary JSON lean; see storeSources rationale).
+                ...(costInfo.costTracked === false ? { costTracked: false } : {}),
+                // Model provenance — ALWAYS, not only on divergence (2026-09-01).
+                //
+                // `model` stays the REQUESTED id, because every downstream
+                // reader already means "requested" by it. `requestedModel`
+                // mirrors it under an unambiguous name, and `resolvedModel` is
+                // the id the provider says it actually served — including the
+                // benign dated snapshot (`gpt-5.4-mini-2026-03-17`), which is
+                // the finest-grained record of the instrument available.
+                //
+                // The old convention persisted these two ONLY on drift, so
+                // "which model produced this number" could not be answered from
+                // the summary at all — catching a swap meant opening the raw
+                // response files by hand and diffing filenames, which is exactly
+                // what the 2026-09-01 TypelessForm session had to do. The drift
+                // FLAG is now its own field rather than the presence of these.
+                requestedModel: cellModel,
+                ...(servedModel ? { resolvedModel: servedModel } : {}),
+                ...(isModelDriftCell ? { modelDrift: true } : {}),
+              });
+              const icon = mention === 'yes' ? `${c.green}YES` : mention === 'src' ? `${c.yellow}SRC` : `${c.red}NO`;
+              const costStr = costInfo.costUsd > 0 ? ` $${costInfo.costUsd.toFixed(4)}` : '';
+              // Replay mode (see replay-mode block at top of file)
+              const replayTag = replayed ? ` ${c.yellow}[replay]${c.reset}` : '';
+              // End replay
+              if (live) {
+                const plainIcon = mention === 'yes' ? 'YES' : mention === 'src' ? 'SRC' : 'NO';
+                live.finish(taskId, {
+                  status: 'done',
+                  detail: `${plainIcon}${replayed ? ' [replay]' : ''} (${citations.length} citations, ${elapsedMs}ms${costStr})`,
+                });
+              }
+              // --json mode (live === null): silent — result already pushed to
+              // results[] above. Consumer parses JSON from stdout, no human text.
+            } catch (err) {
+              const elapsedMs = Date.now() - t0;
+              // For model-deprecated errors, append an inline hint to the ERR
+              // line — re-run init is the only fix, no point in retrying.
+              const cls = classifyProviderError(err);
+              if (live) {
+                live.finish(taskId, {
+                  status: 'error',
+                  detail: `${errMsg(err)}${cls.category === 'model-deprecated' ? ' — re-run `aeo-platform init`' : ''}`,
+                });
+              }
+              // --json mode: error is captured in results[].mention='error' below.
+              sink({
+                query: `Q${qi + 1}`, queryText: baseQuery,
+                queryId: queryIdFor(baseQuery),
+                ...(declaredMarketFor(baseQuery) ? { market: declaredMarketFor(baseQuery) } : {}),
+                provider: provider.name, label: provider.label,
+                model: cellModel, mode, mention: 'error',
+                position: null, citationCount: 0,
+                canonicalCitations: [],
+                competitors: [],
+                ...(region ? { region: region.code, regionLabel: region.label } : {}),
+                elapsedMs,
+                error: errMsg(err),
+              });
+            }
+          };  // end of makeTaskFn body
+
+          // Estimated token cost — fed into planSchedule so each (provider, model)
+          // bucket can size its 60s windows. Pulled from the same ledger that the
+          // ledger-throttle uses, so estimates and reservations agree.
+          const est = estimatePerRequest(cdKey);
+          if (!tasksByCdKey.has(cdKey)) tasksByCdKey.set(cdKey, []);
+          // AP-MEASURE-SAMPLING-CI — emit N task instances per cell so the
+          // EXISTING planSchedule paces them across TPM windows (NO inner for-
+          // loop inside a single taskFn — that would bypass the ledger and stall
+          // 60s; PITFALLS #5). Single-shot (samples=1): exactly one task, empty
+          // suffix, legacy taskId, sink → results[] (byte-identical path).
+          if (samples === 1) {
+            liveTasksBuffer.push({ taskId: baseTaskId, tag });
+            const fn = makeTaskFn(baseTaskId, '', (rec) => results.push(rec));
+            tasksByCdKey.get(cdKey).push({ fn, estimatedTokens: est });
+          } else {
+            const bucket = cellTrials.get(cellKey);
+            for (let t = 0; t < samples; t++) {
+              const trialTaskId = `${baseTaskId}#t${t}`;
+              liveTasksBuffer.push({ taskId: trialTaskId, tag: `${tag} ·t${t + 1}/${samples}` });
+              const fn = makeTaskFn(trialTaskId, `.t${t}`, (rec) => bucket.push(rec));
+              tasksByCdKey.get(cdKey).push({ fn, estimatedTokens: est });
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Per-(provider, model) scheduling: each cdKey gets its own pacing plan,
+  // sized by the learned-or-tier limit. Buckets run in parallel since their
+  // TPM windows are independent (cross-provider AND cross-model).
+  //
+  // Pre-compute schedules so we can print all pacing lines BEFORE live.start().
+  // If we wrote them inside the map below, the writes would race with live
+  // render frames (live starts before Promise.all awaits the map's promises).
+  const cdKeySchedules = [...tasksByCdKey.entries()].map(([cdKey, taskMetas]) => {
+    const [provName, modelId] = cdKey.split(':');
+    const limit = getLearnedOrTierLimit(provName, modelId);
+    const schedule = planSchedule(taskMetas, limit);
+    return { cdKey, taskMetas, schedule };
+  });
+  if (!options.json) {
+    for (const { cdKey, taskMetas, schedule } of cdKeySchedules) {
+      const lastWindow = schedule[schedule.length - 1]?.fireAt || 0;
+      if (lastWindow === 0) continue;
+      // Real wall-clock ETA = lastWindow + ~5s for the final call to round-trip.
+      const etaSec = Math.round(lastWindow / 1000) + 5;
+      process.stderr.write(
+        `  ${c.dim}Pacing ${taskMetas.length} ${cdKey} ${taskMetas.length === 1 ? 'task' : 'tasks'} across ~${etaSec}s${c.reset}\n`,
+      );
+    }
+  }
+
+  // 1.0.7: surface the abort hint above the live region. Operator now knows
+  // the process is interruptible — and what `60s remaining` countdowns mean.
+  const totalCells = cdKeySchedules.reduce((sum, c) => sum + c.taskMetas.length, 0);
+  const distinctProviders = new Set(cdKeySchedules.map(c => c.cdKey.split(':')[0])).size;
+  live?.start(`(running ${totalCells} ${totalCells === 1 ? 'cell' : 'cells'} across ${distinctProviders} ${distinctProviders === 1 ? 'provider' : 'providers'} — press Ctrl+C to abort cleanly)`);
+  for (const t of liveTasksBuffer) {
+    live?.add(t.taskId, t.tag);
+  }
+  try {
+    const schedulingPromises = cdKeySchedules.map(({ taskMetas, schedule }) =>
+      runScheduled(taskMetas.map(t => t.fn), schedule),
+    );
+    await Promise.all(schedulingPromises);
+  } finally {
+    // Always restore terminal state — even if a task throws (Promise.all rejects),
+    // we MUST stop the animation timer, restore the cursor, flush log buffer,
+    // and deregister signal handlers. Otherwise the terminal is left broken
+    // (hidden cursor, half-drawn rows) for the user's next shell prompt.
+    live?.stop();
+  }
+
+  // AP-MEASURE-SAMPLING-CI — collapse each cell's N trials into ONE record.
+  // The «1 record/cell» invariant is preserved: trials live INSIDE the record
+  // (`trials[]`) and top-level mention/position/citationCount carry the
+  // deterministic representative summary (aggregateCellTrials). Every cell fires
+  // live now (no skip-cache), so an empty trial bucket only means a cell that
+  // errored on every trial — guard defensively and skip it. Deterministic
+  // emission order (insertion order of cellTrials = qi→region→provider→mode
+  // loop order) keeps results[] stable run-to-run.
+  if (samples > 1) {
+    for (const [, trials] of cellTrials) {
+      if (!trials || trials.length === 0) continue;       // no measured trial — nothing to collapse
+      // Static cell identity is identical across trials — take it from the
+      // first trial. Prefer a non-error trial so region/model fields are the
+      // real measured ones (error records still carry them, but be safe).
+      const base = trials.find(t => t.mention !== 'error') || trials[0];
+      const agg = aggregateCellTrials(trials);
+      // Per-trial slim record kept for audit/inspection — only the fields that
+      // vary trial-to-trial (keeps the year-over-year summary lean; the rest is
+      // on the representative record).
+      const trialRecords = trials.map(t => ({
+        mention: t.mention,
+        position: t.position ?? null,
+        citationCount: t.citationCount ?? 0,
+        hasBrandInCitations: t.hasBrandInCitations === true,
+        elapsedMs: t.elapsedMs,
+        // AP-PROSE-RANK — keep the per-trial prose ordinal so the collapsed
+        // record's representative proseRank is aggregated, not just trial-1's.
+        ...(t.proseRank ? { proseRank: t.proseRank } : {}),
+        ...(t.error ? { error: t.error } : {}),
+      }));
+      // Build the representative record from the base cell record, then OVERRIDE
+      // the aggregated fields. `raw` is stripped at summary-write time
+      // (results.map(({raw,...r})=>r)); these records have no `raw` anyway.
+      // AP-PROSE-RANK — base spread may carry trial-1's proseRank; the aggregate
+      // is authoritative. Drop the field entirely when the aggregate has none
+      // (e.g. the cell resolved to a list-rank, or no trial produced a prose
+      // ordinal) so a list-rank cell never also carries a stale prose rank.
+      const { proseRank: _baseProseRank, ...baseRest } = base;
+      results.push({
+        ...baseRest,
+        mention: agg.mention,
+        position: agg.position,
+        citationCount: agg.citationCount,
+        canonicalCitations: agg.canonicalCitations,
+        hasBrandInCitations: agg.hasBrandInCitations,
+        presence: agg.presence,
+        ...(agg.proseRank ? { proseRank: agg.proseRank } : {}),
+        trials: trialRecords,
+      });
+    }
+  }
+
+  // No resume-merge: this run's `results` are the complete, authoritative set
+  // for today. The summary write below fully replaces today's _summary.json for
+  // THIS domain — nothing is carried over from a prior run (the removed
+  // skip/merge cache was the cross-domain / edited-query bleed vector).
+
+  // ─── Summary ───
+  // ONE denominator for the whole report — lib/score.js. `mentions` and `total`
+  // stay as the names every existing consumer reads, but they are now ALIASES
+  // of that single computation (hits / valid trials), not a second count of the
+  // same thing. `attempts` and `errors` are published beside them so a reader
+  // can always tell how many calls were made versus how many produced a
+  // measurement. On single-shot runs (every run before sampling existed) the
+  // alias is exact: one non-error cell = one valid trial.
+  const runScore = aggregateScore(results);
+  const total = runScore.valid;
+  const mentions = runScore.hits;
+  const score = runScore.score;
+  const errors = runScore.errors;
+  const attempts = runScore.attempts;
+
+  console.log(`\n${c.bold}${'═'.repeat(60)}${c.reset}`);
+  console.log(`${c.bold}  AEO VISIBILITY REPORT — ${brand}${c.reset}`);
+  console.log(`${c.bold}${'═'.repeat(60)}${c.reset}\n`);
+
+  // Per-query table
+  const colW = 16;
+  console.log(`${c.bold}  Query                                      ${activeProviders.map(p => p.colLabel.slice(0, colW - 1).padEnd(colW)).join('')}${c.reset}`);
+  console.log(`  ${'─'.repeat(44)}${activeProviders.map(() => '─'.repeat(colW)).join('')}`);
+
+  for (let qi = 0; qi < queries.length; qi++) {
+    const label = `Q${qi + 1}: ${queries[qi].slice(0, 40)}`;
+    const cells = activeProviders.map(p => {
+      const r = results.find(r => r.query === `Q${qi + 1}` && r.provider === p.name && r.model === p.model);
+      if (!r) return c.dim + 'skip'.padEnd(colW) + c.reset;
+      if (r.mention === 'yes') return c.green + c.bold + 'YES'.padEnd(colW) + c.reset;
+      if (r.mention === 'src') return c.yellow + 'SRC'.padEnd(colW) + c.reset;
+      if (r.mention === 'error') return c.red + 'ERR'.padEnd(colW) + c.reset;
+      return c.red + 'no'.padEnd(colW) + c.reset;
+    });
+    console.log(`  ${label.padEnd(44)}${cells.join('')}`);
+  }
+
+  console.log(`\n${c.bold}  Score: ${score}%${c.reset} (${mentions}/${total} checks returned a mention)`);
+  // The four numbers, each with one meaning, printed only when they can
+  // actually differ (a clean single-shot run has attempts === valid and zero
+  // errors, so the extra line would repeat the one above). Errors are attempts
+  // that produced no measurement — they are NOT in the score's denominator,
+  // and this line is where the report says so instead of leaving the reader to
+  // infer it from two numbers that don't add up.
+  if (errors > 0 || attempts !== total) {
+    console.log(`  ${c.dim}hits ${mentions} · valid ${total} · attempts ${attempts} · errors ${errors} — the score divides by valid, never by attempts.${c.reset}`);
+  }
+  if (errors > 0) console.log(`  ${c.yellow}${errors} checks failed (API errors)${c.reset}`);
+
+  // AP-QBAR-ZERO-IS-HYPOTHESIS — when the headline is 0%/very-low AND the basket
+  // is small, the score is more likely a basket artefact than a verdict. One
+  // honest line pointing at the README + the report's representativeness panel;
+  // NOT printed in --json mode (programmatic consumers) and NOT on the happy path
+  // (a decent score, or a wide basket, prints nothing extra). Coverage isn't
+  // computed at run time (no own-domain fetch here) — the report panel adds the
+  // «X of N product lines» check; this WARN keys on the always-available small-N
+  // signal. Threshold mirrors SMALL_N_CELL_THRESHOLD in lib/report/sections.js
+  // (kept local so the run path doesn't eagerly import the heavy report module).
+  const SMALL_BASKET_CELLS = 9;
+  if (!silent && total > 0 && total <= SMALL_BASKET_CELLS && score < 25) {
+    console.log(
+      `  ${c.yellow}A ${score}% on only ${total} check${total === 1 ? '' : 's'} can be an artefact of the basket, not a verdict. ` +
+      `Before acting, confirm the raw answers (see the report) and that your queries cover the field your brand competes in — see "A 0% is a hypothesis, not a fact" in the README.${c.reset}`
+    );
+  }
+
+  // Aggregate per-cell LLM-extracted brand lists. Both models agreed → r.competitors
+  // (strong). Only one agreed → r.competitorsUnverified (weaker, dashed badge, and
+  // surfaced separately in stdout + stored for audit). No aggregate classifier step
+  // needed — filtering happened at extract time. Shared with run-manual's merge sink
+  // (lib/report/competitor-counts.js) so the two can never drift.
+  const { verifiedCounts, classifiedCompetitors, unverifiedOnly: unverifiedOnlyEntries } =
+    aggregateCompetitorCounts(results);
+
+  const classificationCostInfo = extractionCostTotal.costUsd > 0 ? {
+    provider: [extractionProviders.primary.name, extractionProviders.secondary?.name].filter(Boolean).join('+'),
+    model:    [extractionProviders.primary.model, extractionProviders.secondary?.model].filter(Boolean).join('+'),
+    label:    'competitor-extraction',
+    requests: results.length * (extractionProviders.secondary ? 2 : 1),
+    inputTokens:  extractionCostTotal.inputTokens,
+    outputTokens: extractionCostTotal.outputTokens,
+    costUsd:      extractionCostTotal.costUsd,
+  } : null;
+  console.log(`${c.dim}  Extraction: ${extractionProviders.secondary
+    ? `${Object.keys(verifiedCounts).length} brands verified (both models), ${unverifiedOnlyEntries.length} unverified (one model only)`
+    : `${unverifiedOnlyEntries.length} competitor name(s) found — single-key mode, all unverified (no second model to cross-check)`} — $${extractionCostTotal.costUsd.toFixed(4)}${c.reset}`);
+
+  if (classifiedCompetitors.length > 0) {
+    console.log(`\n${c.bold}  Top competitors mentioned instead:${c.reset}`);
+    for (const [name, count] of classifiedCompetitors) {
+      console.log(`    ${c.cyan}${name}${c.reset} (${count} checks)`);
+    }
+  }
+
+  // Audit log: unverified-only names (exactly one model found them). Useful for
+  // spotting model disagreements — if a known brand keeps landing here, one of the
+  // extractor models has a systematic blind spot worth investigating.
+  if (unverifiedOnlyEntries.length > 0) {
+    console.log(`\n${c.dim}  Unverified (${extractionProviders.secondary ? 'only one of two models found' : 'single-key mode — no cross-check available'}):${c.reset}`);
+    for (const { name, count } of unverifiedOnlyEntries.slice(0, 10)) {
+      console.log(`    ${c.dim}- ${name}  (${count} cell${count !== 1 ? 's' : ''})${c.reset}`);
+    }
+    if (unverifiedOnlyEntries.length > 10) {
+      console.log(`    ${c.dim}(+ ${unverifiedOnlyEntries.length - 10} more — see _summary.json)${c.reset}`);
+    }
+  }
+
+  // Canonical sources (URLs AI engines keep citing for our vertical).
+  // #12: same-page variants (trailing slash, #fragment, ?utm_*, http/https)
+  // are merged under one canonical key so a single page isn't split into
+  // several low-count rows — see lib/report/canonical-url.js.
+  const allCitedUrls = results.flatMap(r => r.canonicalCitations || []);
+  const topCanonicalSources = aggregateCanonicalSources(allCitedUrls, 20);
+
+  // Domain-level share-of-voice aggregation. Groups all URLs by hostname so
+  // the report can show "G2 captures 19% of citations" (OneGlanse-style table)
+  // — domain share is what matters for outreach planning, not individual URLs.
+  const topDomains = computeTopDomains(results, 10);
+
+  if (topCanonicalSources.length > 0) {
+    console.log(`\n${c.bold}  Top canonical sources (pages AI cites for your vertical):${c.reset}`);
+    for (const { url, count } of topCanonicalSources.slice(0, 5)) {
+      const short = url.length > 80 ? url.slice(0, 77) + '...' : url;
+      console.log(`    ${c.dim}${count}×${c.reset} ${short}`);
+    }
+    if (topCanonicalSources.length > 5) {
+      console.log(`    ${c.dim}(${topCanonicalSources.length - 5} more in _summary.json)${c.reset}`);
+    }
+  }
+
+  console.log(`\n${c.dim}  Raw responses saved to: ${responseDir}/${c.reset}`);
+  console.log(`${c.dim}  Run weekly for trends. Full methodology: webappski.com/blog/aeo-visibility-challenge-week-1${c.reset}\n`);
+
+  const regressionThreshold = typeof config.regressionThreshold === 'number' ? config.regressionThreshold : 10;
+
+  // Session cost breakdown
+  const costMap = {};
+  // Fail-branch #6: models with no pricing-table entry (costTracked:false)
+  // contribute $0 to the session total — surfacing that total alone would
+  // imply the run was free. Collect those model ids so we can print an honest
+  // «cost not tracked for: …» line rather than a misleading $0.
+  const untrackedModels = new Set();
+  for (const r of results) {
+    if (r.costTracked === false) untrackedModels.add(r.model);
+    if (!r.costUsd) continue;
+    const key = `${r.provider}/${r.model}`;
+    if (!costMap[key]) costMap[key] = { provider: r.provider, model: r.model, label: r.label || r.provider, requests: 0, inputTokens: 0, outputTokens: 0, costUsd: 0 };
+    costMap[key].requests++;
+    costMap[key].inputTokens  += r.inputTokens  || 0;
+    costMap[key].outputTokens += r.outputTokens || 0;
+    costMap[key].costUsd      += r.costUsd      || 0;
+  }
+  const costByModel = Object.values(costMap);
+  if (classificationCostInfo) costByModel.push(classificationCostInfo);
+  const sessionCostUsd = sumCostUsd(costByModel);
+
+  if (sessionCostUsd > 0 || untrackedModels.size > 0) {
+    console.log(`\n${c.bold}  Session cost: $${sessionCostUsd.toFixed(4)}${c.reset}`);
+    for (const m of costByModel) {
+      console.log(`    ${c.dim}${m.model}${c.reset}  ${m.inputTokens + m.outputTokens} tok  $${m.costUsd.toFixed(4)}`);
+    }
+    if (untrackedModels.size > 0) {
+      console.log(`    ${c.yellow}cost not tracked for: ${[...untrackedModels].join(', ')}${c.reset} ${c.dim}(model not in pricing table — total above excludes it, not necessarily $0)${c.reset}`);
+    }
+  }
+
+  // AP-RATELIMIT-UX: rate-limit summary. The pacing/cooldown countdowns scroll
+  // past in the live rows; this end-of-run block makes the total visible — so a
+  // user who waited through long pacing sees WHY and what to change. Silent when
+  // the run hit no rate limits at all (the happy path stays quiet).
+  const rlEntries = [...rateLimitEvents.entries()]
+    .filter(([, e]) => e.cooldowns + e.ledgerWaits > 0);
+  if (rlEntries.length > 0 && !options.json) {
+    const totalCooldowns = rlEntries.reduce((s, [, e]) => s + e.cooldowns, 0);
+    console.log(`\n${c.bold}  Rate limits this run: ${totalCooldowns} cooldown${totalCooldowns !== 1 ? 's' : ''}${c.reset}`);
+    for (const [provider, e] of rlEntries) {
+      const parts = [];
+      if (e.cooldowns)   parts.push(`${e.cooldowns} post-429 cooldown${e.cooldowns !== 1 ? 's' : ''}`);
+      if (e.ledgerWaits) parts.push(`${e.ledgerWaits} TPM pacing wait${e.ledgerWaits !== 1 ? 's' : ''}`);
+      console.log(`    ${c.dim}${provider}: ${parts.join(', ')}${c.reset}`);
+    }
+    console.log(`    ${c.dim}Tip: a higher API tier or a non-search model (e.g. --openai-model gpt-5) raises your TPM ceiling.${c.reset}`);
+  }
+
+  // Model-drift summary. A floating alias served a different model lineage than
+  // requested on one or more answer cells → the trend is no longer apples-to-
+  // apples month-to-month. Always surfaced (incl. --json via stderr) because it
+  // is a data-integrity signal, not cosmetic. Silent when no drift occurred.
+  const driftEntries = [...modelDriftEvents.values()];
+  if (driftEntries.length > 0) {
+    const driftedCells = driftEntries.reduce((s, e) => s + e.count, 0);
+    const header = `Model drift this run: ${driftedCells} answer cell${driftedCells !== 1 ? 's' : ''} served a different model than requested`;
+    if (options.json) {
+      process.stderr.write(`\n  [WARN] ${header}\n`);
+      for (const e of driftEntries) {
+        process.stderr.write(`    ${e.provider}: requested ${e.requested} → served ${e.resolved} (${e.count}×)\n`);
+      }
+    } else {
+      console.log(`\n${c.yellow}  ${header}${c.reset}`);
+      for (const e of driftEntries) {
+        console.log(`    ${c.dim}${e.provider}: requested ${c.reset}${e.requested}${c.dim} → served ${c.reset}${e.resolved}${c.dim} (${e.count}×)${c.reset}`);
+      }
+      console.log(`    ${c.dim}Pin the model in .aeo-tracker.json (e.g. providers.gemini.model = "${driftEntries[0].resolved}") so the monthly basket stays comparable. Re-run with --strict-model-pin to fail the run on drift.${c.reset}`);
+    }
+  }
+
+  // --strict-model-pin: opt-in hard FAIL when answer-surface drift occurred.
+  // Default is WARN+provenance (above) — a benign roll-forward must not break a
+  // legitimate scheduled run. This flag is for CI/timeline guards that want a
+  // non-zero exit the moment the basket model changes underneath them. Folded
+  // into the run's exitCode contract below (does NOT process.exit here — that
+  // would skip the summary write + ledger save).
+  const strictPinFailed = driftEntries.length > 0 && options.strictModelPin === true;
+  if (strictPinFailed) {
+    if (!options.json) {
+      console.error(`\n${c.red}  --strict-model-pin: answer-surface model drift detected — the run will exit non-zero.${c.reset}`);
+    } else {
+      process.stderr.write(`  [FAIL] --strict-model-pin: answer-surface model drift detected — exit non-zero.\n`);
+    }
+  }
+
+  // Persist the limits learned this run so the next run paces from them
+  // (best-effort — a save failure never fails the run).
+  const savedLimits = await saveLedger();
+  if (savedLimits > 0 && !options.json) {
+    console.log(`    ${c.dim}Saved ${savedLimits} learned rate-limit${savedLimits !== 1 ? 's' : ''} for next run.${c.reset}`);
+  }
+
+  // Save summary JSON
+  const summary = {
+    date,
+    brand,
+    domain,
+    score,
+    mentions,
+    total,
+    errors,
+    // The denominator, spelled out. `total` is the historical name and stays
+    // an alias of `valid`; `attempts` is new and is the only place the summary
+    // says how many calls were made. A consumer that wants "how many of our
+    // checks even worked" reads valid/attempts instead of guessing.
+    measurementCounts: {
+      hits: mentions,
+      valid: total,
+      attempts,
+      errors,
+      cells: runScore.cells,
+      definition: 'score = hits / valid; valid = attempts − errors; errors are never in the denominator',
+    },
+    // MEAS-1 — the basket this run measured, carried WITH the measurement.
+    // A snapshot that has to be interpreted against whatever the config says
+    // today is not a record of anything: the config moves, the run does not.
+    // `diff` reads declared markets from here when no config is at hand.
+    ...(basketManifest ? { basketManifest } : {}),
+    regressionThreshold,
+    sessionCostUsd,
+    costByModel,
+    // Cost completeness (2026-09-01). `sessionCostUsd` sums only the models the
+    // pricing table knows; anything served by a model with no row contributes
+    // $0 to it. Discovery structurally OUTRUNS the table — it walks itself to
+    // each vendor's newest generation, which by definition ships before anyone
+    // adds its price — so this is not an edge case, it recurs at every
+    // generation change (2026-09-01: `gemini-3.7-flash`). Until now that was
+    // said on stdout and nowhere else, so any consumer reading the summary got
+    // an understated total presented as a complete one. The total is NOT fudged
+    // — an invented price is worse than a known gap; the gap is named instead.
+    ...(untrackedModels.size > 0
+      ? { costComplete: false, costUntrackedModels: [...untrackedModels].sort() }
+      : {}),
+    // single-key mode marker (1.1.8) — the report renderer needs it to phrase
+    // «unverified» honestly (no second model ≠ model disagreement).
+    extractorMode: extractionProviders.secondary ? 'dual' : 'single',
+    // See the run-manual writer: the grader is part of the measurement, so it
+    // is recorded next to the result rather than only printed at run time.
+    extractorModels: extractorModelList(extractionProviders),
+    // version stamp — answers "which build produced this run?" from the artifact
+    generatedBy: `aeo-platform@${TRACKER_VERSION}`,
+    // measurement scope — honest record that we query each engine's API surface
+    // (a reproducible proxy), NOT the consumer apps, and exclude AI Overviews /
+    // Copilot. Single source of truth: lib/report/measurement-disclaimer.js.
+    measurement: MEASUREMENT_DISCLAIMER,
+    results: results.map(({ raw, ...r }) => r),
+    topCompetitors: classifiedCompetitors.map(([name, count]) => ({ name, count })),
+    // Unverified-only tier: names where only one of the two extractor models agreed.
+    // Aggregated here for audit logs / dashboards — per-cell info is in results[].competitorsUnverified.
+    unverifiedOnly: unverifiedOnlyEntries,
+    topCanonicalSources,
+    topDomains,
+    adsDetected: summariseAdsAcrossResults(results),
+    // Track when we last ran a training-data baseline so `--depth=auto`
+    // can prompt the user when the corpus signal is stale (>14 days).
+    ...(depth === 'full' ? { lastFullRun: date } : {}),
+    // AP-MEASURE-SAMPLING-CI — record the sampling config ONLY when it was
+    // active (N>1). Absence === single-shot, keeping the default summary JSON
+    // byte-identical to pre-feature runs (R39). `perCell` is the requested N;
+    // individual cells may have fewer measured trials if some errored (see each
+    // record's `presence.n`).
+    ...(samples > 1 ? { sampling: { samples, perCell: samples } } : {}),
+  };
+  // Atomic — a Ctrl+C mid-write must never leave a half-written summary that
+  // silently corrupts the next run/report/diff (AP-FAIL-BRANCHES).
+  await atomicWriteJson(join(responseDir, '_summary.json'), summary);
+
+  // ─── Exit code decision ───
+  // 0 = score stable or improved
+  // 1 = score dropped more than regressionThreshold (default 10pp)
+  // 2 = all checks returned zero mentions
+  // 3 = all providers errored
+  const previousScore = await readPreviousScore(domain, date);
+
+  let exitCode;
+  if (results.length > 0 && errors === results.length) {
+    exitCode = 3;
+  } else if (mentions === 0) {
+    exitCode = 2;
+  } else if (previousScore !== null && score - previousScore < -regressionThreshold) {
+    exitCode = 1;
+  } else {
+    exitCode = 0;
+  }
+  // --strict-model-pin (opt-in): answer-surface model drift fails an otherwise
+  // clean run with exit 1. Never downgrades a more-severe 2 (invisible) or 3
+  // (all-errored) — those carry stronger signal. `strictPinFailed` is computed
+  // in the summary block above.
+  if (strictPinFailed && exitCode === 0) {
+    exitCode = 1;
+  }
+
+  // Exit code 3: every engine returned mention === 'error'. Show the
+  // actionable panel so the user has copy-pastable fixes instead of exiting
+  // silently with just a non-zero status code. Skipped in --json mode
+  // because JSON consumers parse stdout programmatically — the exitCode +
+  // per-result .error fields in the JSON already tell them everything.
+  if (exitCode === 3 && !silent) {
+    const errorResults = results.filter(r => r.mention === 'error');
+    for (const line of formatAllEnginesFailedPanel({
+      errorResults,
+      providerConfig: config.providers || {},
+      useColor: USE_COLOR,
+    })) {
+      console.error(line);
+    }
+  }
+
+  if (silent) {
+    console.log = origLog;
+    process.stdout.write = origWrite;
+    const jsonOut = {
+      ...summary,
+      exitCode,
+      previousScore,
+      scoreDelta: previousScore !== null ? score - previousScore : null,
+    };
+    origWrite(JSON.stringify(jsonOut, null, 2) + '\n');
+  } else if (exitCode !== 3) {
+    // Next-step hint. Mirrors init's "Next: aeo-platform run" convention.
+    // Skipped on exitCode 3 (all engines errored — no data to report) and in
+    // --json mode (programmatic consumers parse the JSON only).
+    console.log(`\nNext: ${c.cyan}aeo-platform report --html${c.reset}  ${c.dim}(or 'aeo-platform report' for markdown-only)${c.reset}\n`);
+  }
+
+  // Yield event loop to avoid Node.js libuv handle closing crashes on Windows
+  // (undici sockets need time to clean up after fast-failing API keys).
+  await new Promise(r => setTimeout(r, 200));
+  process.exit(exitCode);
+}
+
+
+// ─── HTML report helpers ───
+
+
+function buildHtmlSummary(snapshots, rawResponses) {
+  const latest = snapshots[snapshots.length - 1];
+  const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
+  const brand = latest.brand || '';
+  const domain = latest.domain || '';
+
+  // Unique, ordered query list (Q1…Qn from the latest run)
+  const queryOrder = [];
+  for (const r of latest.results) {
+    if (!queryOrder.find(q => q.id === r.query)) {
+      queryOrder.push({ id: r.query, text: r.queryText || r.query });
+    }
+  }
+
+  // Unique engines, one column per provider (deduplicated by provider only)
+  const engineList = [];
+  for (const r of latest.results) {
+    if (!engineList.find(e => e.provider === r.provider)) {
+      engineList.push({ provider: r.provider, label: r.label || r.provider, model: r.model || '' });
+    }
+  }
+
+  // Match citation URLs against the brand's own domain by registrable-domain
+  // (eTLD+1) host equality, NOT raw substring: a substring test let a look-
+  // alike host (`foo.com.evil.com`) be counted as "they cited you", inflating
+  // the hero "cited you N times" KPI. isOwnDomain accepts the exact host plus
+  // any subdomain (`blog.foo.com`) and rejects spoofs.
+  const isOwnDomainCite = (u) => isOwnDomain(u, domain);
+
+  // Per-engine visibility + delta + tiny trend series (per provider+model)
+  const engines = engineList.map(en => {
+    const rows = latest.results.filter(r => r.provider === en.provider && r.model === en.model);
+    // Per-engine rate through the ONE denominator (lib/score.js). This used to
+    // divide by `rows.length` — every cell including the ones that errored — so
+    // an engine that failed half its calls was reported as half as visible,
+    // with a denominator different from the headline score's on the same page.
+    const { hits, total, rate: pct } = sliceStats(rows);
+    // v0.5 — citations to OWN domain only (used by hero copy + engine cards
+    // that say "cited YOU N times"). r.citationCount is total-cited-anywhere
+    // and would lie when AI cited only competitor pages.
+    const citations = rows.reduce((s, r) => s + (r.canonicalCitations || []).filter(isOwnDomainCite).length, 0);
+    const cells = queryOrder.map(q => {
+      const c = rows.find(r => r.query === q.id);
+      if (!c) return 'missing';
+      if (c.mention === 'error' && c.error) return { status: 'error', message: c.error };
+      return c.mention;
+    });
+    // Same denominator for the history sparkline and the previous-run figure —
+    // a trend drawn with a different denominator than the point it ends at is
+    // a fabricated slope.
+    const series = snapshots.map(s => {
+      const er = (s.results || []).filter(r => r.provider === en.provider && r.model === en.model);
+      return sliceStats(er).rate;
+    });
+    const prevPct = prev ? (function () {
+      const pr = (prev.results || []).filter(r => r.provider === en.provider && r.model === en.model);
+      const st = sliceStats(pr);
+      return st.total > 0 ? st.rate : null;
+    })() : null;
+    const delta = prevPct == null ? null : pct - prevPct;
+    return {
+      provider: en.provider, model: en.model,
+      label: en.label, kind: en.model,
+      cells, pct, hits, total, citations, delta, series,
+    };
+  });
+
+  // Coverage buckets for the hero mini-bar
+  // MEAS-2 — the bucket counts describe the grid (how many cells came back
+  // named / cited / absent / failed), but `total` is PUBLISHED as a
+  // denominator: `lib/report/html.js` renders «Named in {yes}/{total} cells».
+  // It used to increment on every cell including the failed ones, so an engine
+  // that errored half its calls was shown as half as visible, against a
+  // denominator different from the headline score's on the same page. The
+  // buckets stay cell-level; `total` is the run's one denominator (valid
+  // trials), and the attempt count is published beside it rather than in its
+  // place.
+  const coverageCounts = aggregateScore(latest.results);
+  const coverage = latest.results.reduce((acc, r) => {
+    if (r.mention === 'yes')        acc.yes += 1;
+    else if (r.mention === 'src')   acc.src += 1;
+    else if (r.mention === 'error') acc.error += 1;
+    else                            acc.no += 1;
+    return acc;
+  }, {
+    yes: 0, src: 0, no: 0, error: 0,
+    total: coverageCounts.valid,
+    attempts: coverageCounts.attempts,
+    cells: coverageCounts.cells,
+  });
+
+  // Competitors
+  const compList = latest.topCompetitors || [];
+  const competitors = [
+    { name: domain, count: coverage.yes + coverage.src, accent: true },
+    ...compList.map(c => ({ name: c.name, count: c.count })),
+  ];
+
+  // Canonical sources — flag rows whose host matches our domain (registrable-
+  // domain match via isOwnDomain, not substring, so a look-alike host is not
+  // accented as ours).
+  const sources = (latest.topCanonicalSources || []).slice(0, 10).map(s => ({
+    url: s.url,
+    count: s.count,
+    accent: isOwnDomain(s.url, domain),
+  }));
+
+  const actions = latest.llmActions || [];
+
+  // Per-cell verified/unverified brands come straight from the two-model LLM extractor:
+  //   r.competitors            — both models agreed (strong signal, solid badge)
+  //   r.competitorsUnverified  — only one model agreed (weaker signal, dashed badge)
+  // Legacy summaries (pre-two-model extractor) had a single "competitors" list —
+  // those still render, just without the unverified tier.
+  const positionMatrix = queryOrder.map(q => {
+    const columns = engineList.map(en => {
+      const r = latest.results.find(x => x.query === q.id && x.provider === en.provider);
+      const verifiedCells  = (r?.competitors           || []).map(name => ({ name, unverified: false }));
+      const unverifiedCells = (r?.competitorsUnverified || []).map(name => ({ name, unverified: true  }));
+      // Full verbatim engine answer for the click-to-reveal `<details>` behind
+      // each matrix cell. rawResponses is keyed `${query}|${provider}` and holds
+      // the COMPLETE answer text (parseRawResponse returns choices[].message
+      // .content for openai, the joined parts for gemini, the text blocks for
+      // anthropic; manual-paste .txt is the file verbatim). Renderer falls back
+      // to the (truncated) responseExcerpt when no raw file is on disk, and
+      // renders nothing at all when neither exists — never-fail: a cell with no
+      // captured answer must not break the matrix render.
+      const rawKey = `${q.id}|${en.provider}`;
+      const responseFull = (rawResponses && typeof rawResponses[rawKey] === 'string')
+        ? rawResponses[rawKey]
+        : null;
+      return {
+        provider: en.provider,
+        label: en.label,
+        mention: r?.mention ?? 'missing',
+        position: r?.position ?? null,
+        sentiment: r?.sentiment ?? null,
+        competitors: [...verifiedCells, ...unverifiedCells].slice(0, 4),
+        // Total citations the engine returned for this cell — useful in
+        // mention='no' cells to communicate "engine answered with N sources,
+        // none of which named you" instead of a bare dash.
+        citationCount: r?.citationCount ?? 0,
+        responseExcerpt: r?.responseExcerpt ?? null,
+        responseFull,
+        responseQuality: r?.responseQuality ?? null,
+        // Surface the underlying provider error message for cells that errored.
+        // Used by the matrix view to attach a tooltip instead of blending the
+        // err state into the empty-cell visual.
+        errorMessage: r?.error ?? null,
+      };
+    });
+    return { query: q.text, columns };
+  });
+
+  // Cost data from latest run
+  const costBreakdown = latest.costByModel || [];
+  const sessionCostUsd = latest.sessionCostUsd || 0;
+  const costTrend = snapshots.map(s => Math.round((s.sessionCostUsd || 0) * 10000) / 10000);
+  const totalCostUsd = Math.round(costTrend.reduce((s, v) => s + v, 0) * 1_000_000) / 1_000_000;
+
+  // v0.5 — citation count to OWN domain this run + delta vs prev run.
+  // Hero KPI ("cited you N times") needs own-domain only; the raw r.citationCount
+  // counts citations to any URL (competitors, sources) and would inflate the
+  // headline by mixing "they cited goforgeai.com" into "they cited you".
+  const totalCitations = latest.results.reduce((s, r) => s + (r.canonicalCitations || []).filter(isOwnDomainCite).length, 0);
+  const totalCitationsPrev = prev ? (function () {
+    const prevDomain = prev.domain || domain;
+    return prev.results.reduce((s, r) => s + (r.canonicalCitations || []).filter(u =>
+      isOwnDomain(u, prevDomain)
+    ).length, 0);
+  })() : null;
+
+  // v0.5 — region count for the diagnostics tile.
+  // Multi-region runs (--geo) tag each result with `region`; single-region default → 1.
+  const regions = [...new Set(latest.results.map(r => r.region).filter(Boolean))];
+  const regionCount = regions.length || 1;
+
+  // v0.5 — pass-through of latest-snapshot enrichment fields (computed during run / report).
+  // Pre-derived in /run + /report so the renderer doesn't need to re-compute or re-fetch.
+  return {
+    meta: {
+      brand, domain,
+      date: latest.date,
+      prevDate: prev?.date || null,
+      runId: `run_${latest.date.replace(/-/g, '').slice(-6)}`,
+      queryCount: queryOrder.length,
+      providerCount: engineList.length,
+      // Measurement-scope disclaimer for the report header. Prefer what the run
+      // stamped into _summary.json; fall back to the current constant for legacy
+      // snapshots produced before the field existed.
+      measurement: latest.measurement || MEASUREMENT_DISCLAIMER,
+      measurementShort: MEASUREMENT_DISCLAIMER_SHORT,
+    },
+    score: latest.score,
+    scorePrev: prev?.score ?? null,
+    coverage,
+    trend: snapshots.map(s => s.score),
+    trendDates: snapshots.map(s => s.date),
+    queries: queryOrder.map(q => q.text),
+    queryTexts: queryOrder.map(q => q.text), // alias for renderers that prefer the longer name
+    engines,
+    competitors,
+    sources,
+    positionMatrix,
+    totalCitations,
+    totalCitationsPrev,
+    regionCount,
+    regions,
+    sessionCostUsd,
+    totalCostUsd,
+    costBreakdown,
+    costTrend,
+    quotes: [],
+    citationOnly: [],
+    actions,
+    // Pass-through fields (already cached in _summary.json by /run + /report).
+    // Backwards-compat: snapshots from v0.2.x and earlier didn't pre-compute
+    // topDomains during run. Derive from canonicalCitations on the fly so
+    // Section 04 (Domain share-of-voice) renders for legacy data.
+    topDomains:        (latest.topDomains && latest.topDomains.length > 0)
+      ? latest.topDomains
+      : computeTopDomains(latest.results || [], 10),
+    topCanonicalSources: latest.topCanonicalSources || [],
+    crawlability:      latest.crawlability || null,
+    authorityPresence: latest.authorityPresence || null,
+    adsDetected:       latest.adsDetected || null,
+    outreachTemplates: latest.outreachTemplates || [],
+    citationClassification: latest.citationClassification || null,
+    // Raw cell data, used for per-cell sentiment overlay in the matrix sub-toggle.
+    cells: latest.results.map(r => ({
+      query: r.query,
+      provider: r.provider,
+      mention: r.mention,
+      position: r.position,
+      sentiment: r.sentiment || null,
+      citationCount: r.citationCount || 0,
+      region: r.region || null,
+    })),
+  };
+}
+
+// ─── Commands (report) ───
+
+async function cmdReport(args = {}) {
+  // Lazy-load report-only modules so `--help` / `--version` / `init` / `run`
+  // don't pay their import cost. See top-of-file comment about cold-start.
+  const [
+    { generateOutreachTemplates },
+    { competitorOwnedHosts },
+    { auditCrawlability },
+    { checkAuthorityPresence },
+    { checkPageSignals },
+    { checkEntityGraph },
+    { classifyCompetitorPricing },
+    { checkRegionContext },
+    { checkResponseFreshness },
+  ] = await Promise.all([
+    import('../lib/report/outreach-templates.js'),
+    import('../lib/report/sections.js'),
+    import('../lib/report/crawlability-audit.js'),
+    import('../lib/report/authority-presence.js'),
+    import('../lib/report/page-signals.js'),
+    import('../lib/report/entity-graph.js'),
+    import('../lib/report/competitor-pricing.js'),
+    import('../lib/report/region-context.js'),
+    import('../lib/report/response-freshness.js'),
+  ]);
+
+  const { readdirSync } = await import('node:fs');
+
+  if (!existsSync(RESPONSES_ROOT)) {
+    console.error(`${c.red}No ${RESPONSES_ROOT}/ directory found. Run: aeo-platform run${c.reset}`);
+    process.exit(1);
+  }
+
+  // Resolve WHICH domain this report is for, then read only that domain's
+  // namespaced runs — never blend snapshots across domains into one trend.
+  let activeDomain;
+  try {
+    activeDomain = await resolveActiveDomain();
+  } catch (err) {
+    console.error(`${c.red}${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+  const dates = responseDatesForRead(activeDomain);
+  if (dates.length === 0) {
+    console.error(`${c.red}No compatible runs found for ${activeDomain || 'this project'}. Check ${CONFIG_FILE}'s domain or run: aeo-platform run${c.reset}`);
+    process.exit(1);
+  }
+  // MEAS-1 — a report built from the wrong tree is a report about another
+  // history. Warn, never redirect (see warnIfNotCanonicalRunRoot).
+  if (existsSync(CONFIG_FILE)) {
+    try { warnIfNotCanonicalRunRoot(JSON.parse(await readFile(CONFIG_FILE, 'utf-8')), 'report'); }
+    catch { /* unreadable config — the report is still rendered */ }
+  }
+
+  const snapshots = [];
+  for (const date of dates) {
+    const dateDir = responseDateDirForRead(activeDomain, date);
+    if (!dateDir) continue;
+    const p = join(dateDir, '_summary.json');
+    if (existsSync(p)) snapshots.push(JSON.parse(await readFile(p, 'utf-8')));
+  }
+
+  if (snapshots.length === 0) {
+    console.error(`${c.red}No readable _summary.json files found for ${activeDomain || 'this project'}. Run: aeo-platform run${c.reset}`);
+    process.exit(1);
+  }
+
+  // ─── --for-date <YYYY-MM-DD>: render a SPECIFIC historical run ───
+  // Default `report` renders the newest run. `--for-date` re-points the report
+  // at an older `aeo-responses/<date>/_summary.json` so a historical proof
+  // report (e.g. an April snapshot hosted as a dated proof page) can be
+  // regenerated from data that is still on disk. The whole report is built FROM
+  // that snapshot: its score becomes the headline "score", its date drives the
+  // out-dir / age / raw-quote lookup, and the trend is truncated to runs up to
+  // and INCLUDING that date — an April report must not plot May data that did
+  // not exist yet. Composes with --public and --output.
+  let latest = snapshots[snapshots.length - 1];
+  if (args.forDate) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.forDate)) {
+      console.error(`${c.red}--for-date must be YYYY-MM-DD (got "${args.forDate}").${c.reset}`);
+      console.error(`Available dates: ${snapshots.map(s => s.date).join(', ')}`);
+      process.exit(1);
+    }
+    const idx = snapshots.findIndex(s => s.date === args.forDate);
+    if (idx === -1) {
+      console.error(`${c.red}No run found for ${args.forDate} in aeo-responses/.${c.reset}`);
+      console.error(`Available dates: ${snapshots.map(s => s.date).join(', ')}`);
+      process.exit(1);
+    }
+    // Truncate to the chosen date inclusive, then treat it as the "latest".
+    snapshots.length = idx + 1;
+    latest = snapshots[idx];
+  }
+
+  // ─── Refresh-cache (--refresh-cache <csv|all>) ───
+  // Invalidate cached fields BEFORE the cache-or-fetch blocks below so
+  // they refetch fresh data instead of reading stale data from
+  // _summary.json. Without this flag, fields like pageSignals /
+  // authorityPresence persist across report runs — efficient for
+  // iteration but stale when the client's site changes.
+  //
+  // Usage: aeo-platform report --refresh-cache=pageSignals,authorityPresence
+  //        aeo-platform report --refresh-cache=all
+  const REFRESHABLE_FIELDS = [
+    'pageSignals',          // own-domain H1/H2/schema-org crawl
+    'authorityPresence',    // wikipedia/reddit/github
+    'crawlability',         // robots.txt/llms.txt/sitemap audit
+    'citationClassification', // LLM-classified citation domains
+    'outreachTemplates',    // LLM-generated pitch templates
+    'entityGraph',          // sameAs reciprocity check
+    'competitorPricing',    // LLM-classified competitor pricing tiers
+    'llmActions',           // LLM-generated recommended actions
+    'adsDetected',          // sponsored-content scan
+  ];
+  if (args.refreshCache) {
+    const requested = String(args.refreshCache)
+      .split(',').map(s => s.trim()).filter(Boolean);
+    const expand = (f) => f === 'all' ? REFRESHABLE_FIELDS.slice() : [f];
+    const expanded = requested.flatMap(expand);
+    const unknown = expanded.filter(f => !REFRESHABLE_FIELDS.includes(f));
+    if (unknown.length > 0) {
+      console.error(`${c.red}Unknown --refresh-cache fields: ${unknown.join(', ')}${c.reset}`);
+      console.error(`Valid fields: ${REFRESHABLE_FIELDS.join(', ')}, or "all"`);
+      process.exit(1);
+    }
+    const cleared = [];
+    for (const f of expanded) {
+      if (latest[f] !== undefined) {
+        delete latest[f];
+        cleared.push(f);
+      }
+    }
+    if (cleared.length > 0) {
+      await persistSnapshot(latest);
+      console.log(`  ${c.dim}Cache invalidated: ${cleared.join(', ')}${c.reset}`);
+    } else {
+      console.log(`  ${c.dim}--refresh-cache: nothing to clear (none of the requested fields was cached)${c.reset}`);
+    }
+  }
+
+  const rawResponses = {};
+  const latestDateDir = responseDateDirForRead(activeDomain, latest.date);
+  // Directory listing — used to resolve the model-suffixed raw filenames the
+  // run writer produces (`q{N}-{provider}-{safeModel}.json`, see _tryReplay /
+  // the run loop). The historical loader looked for the bare `q{N}-{provider}
+  // .json`, which no run has written since models were added to the filename —
+  // so ChatGPT/Gemini verbatim text silently never loaded and the report fell
+  // back to the truncated excerpt for every API cell. We scan once, then match
+  // by prefix. Tolerate an unreadable dir (degrade to legacy bare-name probe).
+  let dateDirEntries = [];
+  try {
+    const { readdirSync } = await import('node:fs');
+    dateDirEntries = readdirSync(latestDateDir);
+  } catch { /* dir unreadable — graceful: per-result existsSync probes still run */ }
+  for (const r of latest.results) {
+    const qi = String(r.query).replace(/^Q/, '');
+    const key = `${r.query}|${r.provider}`;
+    try {
+      if (r.source === 'manual-paste') {
+        const txtPath = join(latestDateDir, `q${qi}-${r.provider}-manual.txt`);
+        if (existsSync(txtPath)) rawResponses[key] = await readFile(txtPath, 'utf-8');
+      } else {
+        // Resolve the JSON raw file. Preference order:
+        //   1. exact model-suffixed name the writer used (`q{N}-{provider}-{model}.json`);
+        //   2. any `q{N}-{provider}-*.json` (model drift / unknown sanitization),
+        //      preferring a single-shot file over a `.t{trial}` sampled variant;
+        //   3. legacy bare `q{N}-{provider}.json` (pre-model-suffix snapshots).
+        const exactName = r.model
+          ? `q${qi}-${r.provider}-${sanitizeForFilename(r.model)}.json`
+          : null;
+        const prefix = `q${qi}-${r.provider}-`;
+        let jsonName = null;
+        if (exactName && dateDirEntries.includes(exactName)) {
+          jsonName = exactName;
+        } else {
+          const candidates = dateDirEntries
+            .filter(f => f.startsWith(prefix) && f.endsWith('.json') && !f.endsWith('-manual.txt'))
+            // Prefer single-shot (no `.t{n}` trial suffix) for the canonical verbatim.
+            .sort((a, b) => (/\.t\d+\.json$/.test(a) ? 1 : 0) - (/\.t\d+\.json$/.test(b) ? 1 : 0));
+          jsonName = candidates[0] || `q${qi}-${r.provider}.json`;
+        }
+        const jsonPath = join(latestDateDir, jsonName);
+        if (existsSync(jsonPath)) {
+          const raw = JSON.parse(await readFile(jsonPath, 'utf-8'));
+          rawResponses[key] = parseRawResponse(r.provider, raw);
+        }
+      }
+    } catch {
+      // raw missing or malformed — skip; sections degrade gracefully
+    }
+  }
+
+  const { createLiveRows } = await import('../lib/util/live-rows.js');
+  const reportRows = createLiveRows({ stream: process.stdout });
+  reportRows.start();
+
+  // Whenever the live-rows block actually animates (TTY, non-legacy console),
+  // NO other code may write to the terminal directly or it corrupts the
+  // cursor-managed rows. Route the provider retry/cooldown layer's diagnostic
+  // lines (transient backoff, TPM cooldown, give-up notices) through the block's
+  // buffered log(), which flushes cleanly after stop(). Restored right after
+  // reportRows.stop() below. Non-TTY/legacy keep the plain stderr default.
+  const { setRetryStatusSink } = await import('../lib/providers/_retry.js');
+  const isLegacyWinConsole = process.platform === 'win32'
+    && !process.env.WT_SESSION && !process.env.TERM_PROGRAM;
+  const reportAnimating = !!process.stdout.isTTY && !isLegacyWinConsole;
+  if (reportAnimating) setRetryStatusSink((line) => reportRows.log(line));
+
+  // ─── Wave 1: independent blocks run in parallel ───────────────────────
+  // Citation classification (LLM) | LLM actions (LLM) | Page signals → Authority
+  // (HTTP) | Crawlability (HTTP) | Entity graph (HTTP) | Competitor pricing →
+  // Outreach (heuristic HTTP → LLM). Two tasks are CHAINED onto their sole
+  // dependency instead of running after the wave barrier: Authority onto
+  // pageSignals, and Outreach onto competitorPricing (it reads competitorOwnedHosts,
+  // derived from pricing) — each starts the instant its producer resolves while
+  // staying parallel with everything else. This replaces the old tail-serialized
+  // Authority/Outreach (Outreach also paid a redundant live /models GET). Each task
+  // has its own try/catch so a single failure doesn't cancel the others. Logs may
+  // interleave (each line carries its own block-prefix marker, so output stays
+  // readable).
+  await Promise.all([
+    // ─── Citation classification (LLM-based, cached) ───
+    // Classify top cited domains against brand's category. Universal — works for any
+    // language or country. Result cached in _summary.json; costs $0 on subsequent runs.
+    (async () => {
+      if (!latest.citationClassification && (latest.topCanonicalSources || []).length > 0) {
+        let cfg = {};
+        let cfgReadError = null;
+        try {
+          cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+        } catch (err) {
+          cfgReadError = err;
+        }
+
+        const brand = latest.brand || cfg.brand || '';
+        const category = cfg.category || '';
+        const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
+
+        if (cfgReadError) {
+          reportRows.add('cite', 'Citation classification');
+          reportRows.finish('cite', { status: 'error', detail: `could not read ${CONFIG_FILE} (${errMsg(cfgReadError)})` });
+        } else if (!category) {
+          reportRows.add('cite', 'Citation classification');
+          reportRows.finish('cite', { status: 'error', detail: `no category in ${CONFIG_FILE}. Re-run: aeo-platform init` });
+        } else {
+          // One-model classify task — CLASSIFY_PROVIDER_PRIORITY order (Gemini
+          // first, OpenAI residual), not object-key order (which would silently
+          // favour OpenAI since it's listed first in DEFAULT_CONFIG.providers).
+          const classifyProviderName = CLASSIFY_PROVIDER_PRIORITY.find(
+            name => providersCfg[name] && process.env[providersCfg[name].env],
+          );
+          const providerEntry = classifyProviderName ? [classifyProviderName, providersCfg[classifyProviderName]] : null;
+
+          if (!providerEntry) {
+            reportRows.add('cite', 'Citation classification');
+            reportRows.finish('cite', { status: 'error', detail: 'no API key found in environment' });
+          } else {
+            const [providerKey, providerCfg] = providerEntry;
+            const providerCall = PROVIDERS[providerKey]?.call;
+            if (providerCall) {
+              reportRows.add('cite', `Classifying citations via ${PROVIDERS[providerKey].label}`);
+              try {
+                const classification = await classifyCitations({
+                  brand, category,
+                  topCanonicalSources: latest.topCanonicalSources,
+                  providerCall,
+                  providerName: providerKey,
+                  apiKey: process.env[providerCfg.env],
+                  // Citation classification is a classify task, not generation —
+                  // was silently using the flagship model (same bug class as
+                  // outreach drafting a few lines below already avoids).
+                  //
+                  // Resolved live rather than read straight off the config:
+                  // cmdRun rediscovers this tier every run, this path did not,
+                  // and a config pinning a model retired since it was written
+                  // failed here on every report — silently, because the result
+                  // is only cached on success. See resolveClassifyModel.
+                  model: await resolveClassifyModel(providerKey, providerCfg),
+                });
+                latest.citationClassification = classification;
+                await persistSnapshot(latest);
+                const off = classification.offCategoryDomains.length;
+                if (off > 0) {
+                  reportRows.finish('cite', { status: 'done', detail: `${c.yellow}${SYM.warn} ${off} cited domain${off !== 1 ? 's' : ''} classified as off-category${c.reset}` });
+                } else {
+                  reportRows.finish('cite', { status: 'done', detail: 'All cited domains match brand category' });
+                }
+              } catch (err) {
+                reportRows.finish('cite', { status: 'error', detail: errMsg(err) });
+                // Same single-writer invariant: while the rows animate, buffer
+                // the stack through log() instead of writing stderr mid-frame.
+                // Guard the value: a non-Error / nullish throw has no .stack, and
+                // log()'s buffer flush calls .endsWith() — a non-string would
+                // crash the whole report at stop(). errMsg() always yields a string.
+                if (process.env.DEBUG) {
+                  const dump = (err && err.stack) || errMsg(err);
+                  if (reportAnimating) reportRows.log(dump);
+                  else console.error(dump);
+                }
+              }
+            }
+          }
+        }
+      } else if (latest.citationClassification) {
+        reportRows.add('cite', 'Citation classification');
+        reportRows.finish('cite', { status: 'done', detail: 'loaded from cache' });
+      }
+    })(),
+
+    // ─── LLM action recommendations (cached) ───
+    (async () => {
+      // White-label client snapshots carry statistics only — no recommendation
+      // block — so skip the (paid) generation entirely rather than generate
+      // then strip. The reader re-renders these regularly; making them pay LLM
+      // cost for a block we immediately drop is wrong, and skip-don't-strip
+      // closes the leak class at the source.
+      if (args.whiteLabel) {
+        // no-op: recommendations are not part of a white-label deliverable
+      } else if (!latest.llmActions) {
+        let cfg = {};
+        try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
+        const category = cfg.category || '';
+        const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
+        // Recommendations = single-model GENERATION on the main/flagship model, so
+        // pick the provider by PROVIDER_PRIORITY (Gemini-first, main-tier) rather
+        // than object-key order — object-key order silently favoured OpenAI (it's
+        // key #1 in DEFAULT_CONFIG.providers), the exact footgun the citation block
+        // above documents. Fallback down the list is preserved.
+        const recProviderName = PROVIDER_PRIORITY.find(
+          name => providersCfg[name] && process.env[providersCfg[name].env],
+        );
+        const providerEntry = recProviderName ? [recProviderName, providersCfg[recProviderName]] : null;
+        if (providerEntry && category) {
+          const [providerKey, providerCfg] = providerEntry;
+          const providerCall = PROVIDERS[providerKey]?.call;
+          if (providerCall) {
+            const prev = snapshots.length > 1 ? snapshots[snapshots.length - 2] : null;
+            reportRows.add('actions', `Generating recommendations via ${PROVIDERS[providerKey].label}`);
+            try {
+              const { actions, costInfo } = await deriveActionsWithLLM(latest, prev, category, {
+                providerName: providerKey,
+                providerCall,
+                apiKey: process.env[providerCfg.env],
+                // LLM actions = generation task → use the user's flagship model.
+                model: providerCfg.model,
+              });
+              latest.llmActions = actions;
+              addCostEntry(latest, costInfo);
+              await persistSnapshot(latest);
+              reportRows.finish('actions', { status: 'done', detail: `${actions.length} recommendations generated` });
+            } catch (err) {
+              reportRows.finish('actions', { status: 'error', detail: errMsg(err) });
+            }
+          }
+        }
+      } else {
+        reportRows.add('actions', 'Recommendations');
+        reportRows.finish('actions', { status: 'done', detail: 'loaded from cache' });
+      }
+    })(),
+
+    // ─── v1.1: Page signals (own-domain HTML crawl, cached) → Authority ───
+    // Page signals surfaces H1/H2 patterns, answer-capsule coverage, Schema.org
+    // block count + types, FAQ count. Pure HTTP fetch, no LLM cost. Authority
+    // presence is CHAINED after it (below, same IIFE): it's the ONLY task that
+    // depends on pageSignals, so it starts the instant the crawl resolves — in
+    // parallel with the rest of Wave 1 — instead of waiting for the whole barrier.
+    (async () => {
+      if (!latest.pageSignals && latest.domain && !args.noPageSignals) {
+        reportRows.add('page', `Crawling own-domain page signals (${latest.domain})`);
+        try {
+          latest.pageSignals = await checkPageSignals(latest.domain);
+          await persistSnapshot(latest);
+          const ps = latest.pageSignals.homepage;
+          if (ps?.ok) {
+            reportRows.finish('page', { status: 'done', detail: `h1:${ps.headings.h1.count} h2:${ps.headings.h2.count} capsules:${ps.answerCapsules.coverage}% schemas:${ps.schemaOrg.blockCount}` });
+          } else {
+            reportRows.finish('page', { status: 'error', detail: ps?.error || 'unavailable' });
+          }
+        } catch (err) {
+          reportRows.finish('page', { status: 'error', detail: errMsg(err) });
+        }
+      } else if (latest.pageSignals) {
+        reportRows.add('page', 'Page signals');
+        reportRows.finish('page', { status: 'done', detail: 'loaded from cache' });
+      } else if (args.noPageSignals) {
+        reportRows.add('page', 'Page signals');
+        reportRows.finish('page', { status: 'error', detail: 'skipped (--no-page-signals)' });
+      }
+
+      // ─── Authority presence — depends ONLY on latest.pageSignals (resolved
+      // just above), so it's chained here rather than after the Wave 1 barrier.
+      // Off-page signals AI engines weight heavily; free public endpoints, cached.
+      if (!latest.authorityPresence && latest.brand && !args.noAuthority) {
+        reportRows.add('auth', `Checking authority signals for ${latest.brand}`);
+        try {
+          // Pass domain + category + pageSignals so getAuthorityProfile() can
+          // promote a dev-tool brand to also check GitHub (alongside wiki+reddit).
+          // pageSignals.homepage.headings is the strongest signal when init
+          // didn't fill category — it's brand-authored text.
+          // GITHUB_TOKEN env var is read directly when present (60→5000 req/h).
+          latest.authorityPresence = await checkAuthorityPresence(latest.brand, {
+            domain: latest.domain,
+            category: latest.category,
+            pageSignals: latest.pageSignals,
+          });
+          await persistSnapshot(latest);
+          const ap = latest.authorityPresence;
+          const wiki = ap.wikipedia.found ? `${c.green}wiki${SYM.ok}${c.reset}` : `${c.yellow}wiki${SYM.err}${c.reset}`;
+          const red = ap.reddit.found ? `${c.green}reddit${SYM.ok}${c.reset} (${ap.reddit.mentionCount})` : `${c.yellow}reddit${SYM.err}${c.reset}`;
+          const gh = ap.github
+            ? (ap.github.found ? `${c.green}gh${SYM.ok}${c.reset}` : `${c.yellow}gh${SYM.err}${c.reset}`)
+            : '';
+          reportRows.finish('auth', { status: 'done', detail: `${wiki} · ${red}${gh ? ' · ' + gh : ''}` });
+        } catch (err) {
+          reportRows.finish('auth', { status: 'error', detail: errMsg(err) });
+        }
+      } else if (latest.authorityPresence) {
+        reportRows.add('auth', 'Authority presence');
+        reportRows.finish('auth', { status: 'done', detail: 'loaded from cache' });
+      } else if (args.noAuthority) {
+        reportRows.add('auth', 'Authority presence');
+        reportRows.finish('auth', { status: 'error', detail: 'skipped (--no-authority)' });
+      }
+    })(),
+
+    // ─── AI-bot crawlability audit (cached) ───
+    // Pure HTTP fetches, no LLM cost. Surfaces robots.txt blocks and a missing
+    // sitemap.xml — common root causes of "AI doesn't see me". /llms.txt is
+    // probed too, but only ever reported as a fact (AP-DEAD-TACTIC-LLMSTXT).
+    (async () => {
+      if (!latest.crawlability && latest.domain) {
+        reportRows.add('crawl', `Auditing AI-bot crawlability for ${latest.domain}`);
+        try {
+          latest.crawlability = await auditCrawlability(latest.domain);
+          await persistSnapshot(latest);
+          const s = latest.crawlability.summary;
+          // Only a blocked SEARCH-INDEX crawler is red; other blocks are a
+          // policy choice with no citation effect, so they are counted plainly.
+          const flag = s.gatingBlockedCount > 0
+            ? `${c.red}${s.gatingBlockedCount} search crawler${s.gatingBlockedCount !== 1 ? 's' : ''} blocked${c.reset}`
+            : s.blockedCount > 0
+              ? `${s.blockedCount} non-search bot${s.blockedCount !== 1 ? 's' : ''} blocked (no citation effect)`
+              : `all bots OK`;
+          reportRows.finish('crawl', { status: 'done', detail: `robots:${s.hasRobots ? SYM.ok : SYM.err} sitemap:${s.hasSitemap ? SYM.ok : SYM.err} llms.txt:${s.hasLlmsTxt ? 'yes' : 'no'} — ${flag}` });
+        } catch (err) {
+          reportRows.finish('crawl', { status: 'error', detail: errMsg(err) });
+        }
+      } else if (latest.crawlability) {
+        reportRows.add('crawl', 'Crawlability audit');
+        reportRows.finish('crawl', { status: 'done', detail: 'loaded from cache' });
+      }
+    })(),
+
+    // ─── v1.1: Entity graph (cross-platform sameAs reciprocity, cached) ───
+    // Reuses homepage HTML from pageSignals if available — avoids re-fetch.
+    (async () => {
+      if (!latest.entityGraph && latest.domain && !args.noEntityGraph) {
+        reportRows.add('entity', 'Verifying cross-platform sameAs chain');
+        try {
+          latest.entityGraph = await checkEntityGraph(latest.domain);
+          await persistSnapshot(latest);
+          const eg = latest.entityGraph;
+          if (eg.ok) {
+            reportRows.finish('entity', { status: 'done', detail: `sameAs:${eg.sameAsCount} reciprocity:${eg.summary.reciprocityRate}%` });
+          } else {
+            reportRows.finish('entity', { status: 'error', detail: eg.error || 'unavailable' });
+          }
+        } catch (err) {
+          reportRows.finish('entity', { status: 'error', detail: errMsg(err) });
+        }
+      } else if (latest.entityGraph) {
+        reportRows.add('entity', 'Entity graph');
+        reportRows.finish('entity', { status: 'done', detail: 'loaded from cache' });
+      } else if (args.noEntityGraph) {
+        reportRows.add('entity', 'Entity graph');
+        reportRows.finish('entity', { status: 'error', detail: 'skipped (--no-entity-graph)' });
+      }
+    })(),
+
+    // ─── v1.1: Competitor pricing tiers (cached, top-5) ───
+    // Heuristic only — no LLM cost. Uses citations from this run.
+    (async () => {
+      if (!latest.competitorPricing && Array.isArray(latest.topCompetitors) && latest.topCompetitors.length > 0 && !args.noPricing) {
+        reportRows.add('pricing', 'Classifying competitor pricing tiers (top-5)');
+        try {
+          const allCitations = (latest.results || []).flatMap(r => r.canonicalCitations || []);
+          latest.competitorPricing = await classifyCompetitorPricing(latest.topCompetitors, allCitations, { limit: 5 });
+          await persistSnapshot(latest);
+          const tiers = latest.competitorPricing.map(c => `${c.name}=${c.tier}`).join(' ');
+          reportRows.finish('pricing', { status: 'done', detail: tiers });
+        } catch (err) {
+          reportRows.finish('pricing', { status: 'error', detail: errMsg(err) });
+        }
+      } else if (latest.competitorPricing) {
+        reportRows.add('pricing', 'Competitor pricing');
+        reportRows.finish('pricing', { status: 'done', detail: 'loaded from cache' });
+      } else if (args.noPricing) {
+        reportRows.add('pricing', 'Competitor pricing');
+        reportRows.finish('pricing', { status: 'error', detail: 'skipped (--no-pricing)' });
+      }
+
+      // ─── Outreach email templates — CHAINED after pricing (same IIFE) ───
+      // Outreach reads competitorOwnedHosts(latest), which derives ONLY from
+      // latest.competitorPricing[].domain — produced by the pricing block just
+      // above. So outreach MUST run after pricing resolves, not concurrently: a
+      // concurrent read (outreach only awaits a fast local readFile before this)
+      // saw competitorPricing still undefined → an empty host set → fail-branch #10
+      // silently defeated, drafting a pitch to a direct competitor's OWN domain.
+      // Chaining here (same pattern as authority→pageSignals) keeps outreach
+      // parallel with the other Wave-1 tasks while honouring its one real data
+      // dependency. Skipped under --white-label (client snapshots are stats-only).
+      if (args.whiteLabel) {
+        // no-op: outreach drafts are not part of a white-label deliverable
+      } else if (!latest.outreachTemplates && Array.isArray(latest.topDomains) && latest.topDomains.length > 0) {
+        let cfg = {};
+        try { cfg = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); } catch { /* skip */ }
+        const category = cfg.category || '';
+        const providersCfg = { ...DEFAULT_CONFIG.providers, ...(cfg.providers || {}) };
+        // Pick the PROVIDER by CLASSIFY_PROVIDER_PRIORITY (Gemini first); the MODEL
+        // is the flagship (providerCfg.model, user decision — outreach is structured
+        // GENERATION, not a cheap classify). Using the flagship directly also drops
+        // the old live /models discovery round-trip that pinned this to a classify
+        // tier — one fewer network hop per report.
+        const providerKeyPicked = CLASSIFY_PROVIDER_PRIORITY.find(
+          name => providersCfg[name] && process.env[providersCfg[name].env],
+        );
+        const providerEntry = providerKeyPicked ? [providerKeyPicked, providersCfg[providerKeyPicked]] : null;
+        if (providerEntry && category) {
+          const [providerKey, providerCfg] = providerEntry;
+          const providerCall = PROVIDERS[providerKey]?.call;
+          if (providerCall) {
+            reportRows.add('outreach', `Drafting outreach emails for top-${Math.min(3, latest.topDomains.length)} domains`);
+            try {
+              const { templates, costInfo } = await generateOutreachTemplates({
+                brand: latest.brand, domain: latest.domain, category,
+                topDomains: latest.topDomains,
+                // fail-branch #10: never draft an email pitching a competitor's
+                // own site to add the user alongside a rival.
+                competitorHosts: competitorOwnedHosts(latest),
+                providerName: providerKey,
+                providerCall,
+                apiKey: process.env[providerCfg.env],
+                // Outreach = structured generation → flagship model (user decision).
+                model: providerCfg.model,
+              });
+              if (templates.length > 0) {
+                latest.outreachTemplates = templates;
+                addCostEntry(latest, costInfo);
+                await persistSnapshot(latest);
+                reportRows.finish('outreach', { status: 'done', detail: `${templates.length} outreach template${templates.length !== 1 ? 's' : ''} generated` });
+              } else {
+                reportRows.finish('outreach', { status: 'done', detail: '0 templates generated' });
+              }
+            } catch (err) {
+              reportRows.finish('outreach', { status: 'error', detail: errMsg(err) });
+            }
+          }
+        }
+      } else if (latest.outreachTemplates) {
+        reportRows.add('outreach', 'Outreach templates');
+        reportRows.finish('outreach', { status: 'done', detail: 'loaded from cache' });
+      }
+    })(),
+  ]);
+
+  // ─── v1.1: Region context (per-engine geo signals, derived) ───
+  // Pure derivation from existing results — no fetch. Always recompute.
+  try {
+    latest.regionContext = checkRegionContext(latest);
+    await persistSnapshot(latest);
+    const rc = latest.regionContext.aggregate;
+    if (rc.dominantRegion) {
+      reportRows.add('region', 'Region context');
+      reportRows.finish('region', { status: 'done', detail: `dominant region: ${rc.dominantRegion} (${rc.confidence})` });
+    }
+  } catch (err) {
+    reportRows.add('region', 'Region context');
+    reportRows.finish('region', { status: 'error', detail: errMsg(err) });
+  }
+
+  // ─── v1.1: Response freshness (training cutoff inference, derived) ───
+  // Pure derivation from existing results. Always recompute.
+  try {
+    latest.responseFreshness = checkResponseFreshness(latest);
+    await persistSnapshot(latest);
+    const rf = latest.responseFreshness.aggregate;
+    reportRows.add('freshness', 'Response freshness');
+    reportRows.finish('freshness', { status: 'done', detail: `${rf.overall} (fresh:${rf.counts.fresh} stale:${rf.counts.stale} unknown:${rf.counts.unknown})` });
+  } catch (err) {
+    reportRows.add('freshness', 'Response freshness');
+    reportRows.finish('freshness', { status: 'error', detail: errMsg(err) });
+  }
+
+  reportRows.stop();
+  // Restore the default stderr sink now the live region is done — later stages
+  // (and any other command in-process) must not keep writing into a stopped
+  // block's buffer.
+  if (reportAnimating) setRetryStatusSink(null);
+
+  // v0.7 — AEO Mission Control metadata payload (privacy-stripped allow-list).
+  // Skipped entirely when --no-mc-block is passed.
+  // Read package metadata once — version feeds MC bridge + footer colophon,
+  // repository URL feeds the «open source» footer link. Hoisted out of the
+  // noMcBlock branch so the footer always shows them.
+  let trackerVersion = TRACKER_VERSION;
+  let trackerRepoUrl = '';
+  try {
+    const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf-8'));
+    trackerVersion = pkg.version || trackerVersion;
+    // package.json "repository" can be a string or an { url, type } object.
+    // npm convention strips "git+" prefix and ".git" suffix for display.
+    const rawRepo = typeof pkg.repository === 'string'
+      ? pkg.repository
+      : (pkg.repository && pkg.repository.url) || '';
+    trackerRepoUrl = String(rawRepo).replace(/^git\+/, '').replace(/\.git$/, '');
+  } catch { /* package metadata unreadable — falls through to defaults */ }
+
+  // --white-label is a superset of --public, and it removes the Webappski /
+  // Mission-Control bridge entirely — so it forces the bridge OFF and turns on
+  // every public-mode guard (cost-card suppression, source-path footnotes,
+  // destructive-sweep skip). Derived once here, threaded into both renderers.
+  const whiteLabel = args.whiteLabel === true;
+  const publicMode = args.public === true || whiteLabel;
+  const skipMcBlock = args.noMcBlock === true || whiteLabel;
+
+  let mcMetadata = null;
+  let daysSinceRun = 0;
+  if (!skipMcBlock) {
+    let cfgLang = 'en';
+    let cfgRaw = null;
+    try {
+      cfgRaw = JSON.parse(await readFile(CONFIG_FILE, 'utf-8'));
+      cfgLang = cfgRaw.lang || cfgRaw.language || 'en';
+    } catch { /* config missing — default 'en', no basket history available */ }
+    mcMetadata = buildMcMetadata(latest, snapshots, {
+      trackerVersion,
+      lang: cfgLang,
+      config: cfgRaw,
+    });
+
+    // Compute age in days (ceiling). latest.date is "YYYY-MM-DD" UTC.
+    const runDateMs = Date.parse(latest.date + 'T00:00:00Z');
+    if (Number.isFinite(runDateMs)) {
+      daysSinceRun = Math.max(0, Math.floor((Date.now() - runDateMs) / 86400000));
+    }
+  }
+
+  const md = renderMarkdown(snapshots, rawResponses, {
+    mcMetadata, noMcBlock: skipMcBlock, public: publicMode,
+    whiteLabel, reportTitle: args.reportTitle, responsesPath: latestDateDir,
+  });
+
+  const outDir = join(reportsDirFor(latest.domain), latest.date);
+  await mkdir(outDir, { recursive: true });
+  const outPath = args.output || join(outDir, 'report.md');
+  await writeFile(outPath, md);
+
+  // The render/write/open tail below runs AFTER the live-rows network phase
+  // stopped (reportRows.stop() above), so it was previously silent. Two of its
+  // steps have a perceptible wait — the heavy synchronous HTML build and the
+  // (up-to-5s) async browser-open — so we bracket each with the same TTY-only
+  // createSpinner primitive the rest of the CLI uses (queriesOnlySpinner,
+  // autoSpinner, runManualSpinner). One instance, reused for both start/stop
+  // cycles; no-op in non-TTY/CI so the existing console.log record is untouched.
+  // Caveat: renderHtml() is synchronous and blocks the event loop, so the
+  // spinner can't animate during it — start() paints one reassurance frame
+  // synchronously, and the `HTML report: <path>` line below is the completion
+  // record. openInBrowser() DOES await, so its spinner animates for real.
+  const renderSpinner = createSpinner();
+
+  // v0.8 — HTML bento report is the default; --no-html skips it for CI/email-only.
+  // The legacy `cmdPreview` markdown→TMP-HTML path was removed in v0.8 — the
+  // single-file bento HTML in `lib/report/html.js` is the canonical view.
+  let htmlOutPath = null;
+  if (!args.noHtml) {
+    htmlOutPath = args.output
+      ? args.output.replace(/\.md$/, '') + '.html'
+      : join(outDir, 'report.html');
+    renderSpinner.start('Building HTML report…');
+    // finally-guaranteed stop() (matches runManualSpinner below): renderHtml is
+    // pure, but writeFile can reject (EACCES/ENOSPC) — without finally the TTY
+    // spinner interval would leak / clobber the error line on failure.
+    try {
+      const html = renderHtml(
+        buildHtmlSummary(snapshots, rawResponses),
+        snapshots,
+        {
+          mcMetadata, daysSinceRun, noMcBlock: skipMcBlock,
+          // White-label drops the tool fingerprint, so pass NO version / repo URL
+          // (the masthead + colophon read these — withholding them is the strip).
+          pkgVersion: whiteLabel ? null : trackerVersion,
+          repoUrl: whiteLabel ? '' : trackerRepoUrl,
+          public: publicMode, whiteLabel, reportTitle: args.reportTitle,
+        },
+      );
+      await writeFile(htmlOutPath, html);
+    } finally {
+      renderSpinner.stop();
+    }
+  }
+
+  // v0.5 — sweep stale orphaned report.{md,html} from older date dirs so they
+  // don't mislead a reader after a layout rewrite. Only fires when writing to
+  // the default location (custom --output paths skip cleanup since the user
+  // controls where artifacts land).
+  //
+  // --public is ALSO skipped: public mode is proof-archive mode. The hosted
+  // proof timeline is a SET of dated reports (April / May / … each a separate
+  // aeo-reports/<date>/report.html), and the default sweep — which deletes
+  // report.{md,html} from every date dir except the one being written — would
+  // erase the rest of that archive on each regen. (This is exactly what wiped
+  // the historical TF renders before this guard.) The reader controls the
+  // public archive; the tool must not garbage-collect it. With --for-date the
+  // date being written is itself an OLD dir, making the sweep even more
+  // destructive, so the guard protects that path too.
+  let cleanupResult = { removedFiles: 0, removedDirs: 0 };
+  if (!args.output && !publicMode) {
+    cleanupResult = await cleanupStaleReportArtifacts(latest.date, latest.domain);
+  }
+
+  const loadedQuotes = Object.keys(rawResponses).length;
+  console.log(`\n${c.bold}aeo-platform — report${c.reset}`);
+  console.log(`  ${snapshots.length} run${snapshots.length !== 1 ? 's' : ''} loaded (${snapshots[0].date} → ${latest.date})`);
+  console.log(`  ${loadedQuotes} raw response${loadedQuotes !== 1 ? 's' : ''} available for verbatim quotes`);
+  const scoreLabel = args.forDate ? `${latest.date} score` : 'Latest score';
+  console.log(`  ${scoreLabel}: ${c.bold}${latest.score}%${c.reset}`);
+  if (cleanupResult.removedFiles > 0 || cleanupResult.removedDirs > 0) {
+    const f = cleanupResult.removedFiles;
+    const d = cleanupResult.removedDirs;
+    const fStr = `${f} stale report file${f !== 1 ? 's' : ''}`;
+    const dStr = d > 0 ? ` and ${d} empty director${d !== 1 ? 'ies' : 'y'}` : '';
+    console.log(`  ${c.dim}Cleanup: removed ${fStr}${dStr}.${c.reset}`);
+  }
+  console.log(`\n${c.green}Report written: ${outPath}${c.reset}`);
+  if (htmlOutPath) console.log(`${c.green}HTML report:   ${htmlOutPath}${c.reset}`);
+
+  if (args.noOpen) {
+    console.log(`${c.dim}(browser open skipped — pass without --no-open to open automatically)${c.reset}\n`);
+  } else if (htmlOutPath) {
+    const { openInBrowser } = await import('../lib/util/open-browser.js');
+    // Genuinely async (spawns powershell.exe to resolve the default browser via
+    // the registry on Windows, timeout 5s) — the spinner animates for real here.
+    renderSpinner.start('Opening report in browser…');
+    let ok;
+    try {
+      ok = await openInBrowser(htmlOutPath);
+    } finally {
+      renderSpinner.stop();
+    }
+    if (ok) {
+      console.log(`${c.green}Opened in browser: ${htmlOutPath}${c.reset}\n`);
+    } else {
+      // Headless Linux without xdg-open, sandboxed env, etc. Print the path
+      // so the user can open it themselves instead of staring at silence.
+      console.log(`${c.dim}(could not auto-open — open this file manually: ${htmlOutPath})${c.reset}\n`);
+    }
+  } else {
+    console.log(`${c.dim}(--no-html: only ${outPath} written; drop --no-html to open the bento HTML)${c.reset}\n`);
+  }
+
+  process.exit(0);
+}
+
+// ─── Commands (preview) — REMOVED in v0.8 ───
+
+// ─── Commands (run-manual) ───
+
+async function cmdRunManual(argv) {
+  // Parse: aeo-platform run-manual <provider> --from-dir <dir>
+  let providerName = null;
+  let fromDir = null;
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--from-dir' && argv[i + 1]) { fromDir = argv[i + 1]; i++; }
+    else if (!argv[i].startsWith('--') && !providerName) { providerName = argv[i]; }
+  }
+
+  if (!providerName) {
+    console.error(`${c.red}Usage: aeo-platform run-manual <provider> --from-dir <dir>${c.reset}`);
+    console.error(`${c.dim}Providers: ${Object.keys(PROVIDERS).join(', ')}${c.reset}`);
+    process.exit(1);
+  }
+  if (!PROVIDERS[providerName]) {
+    console.error(`${c.red}Unknown provider: ${providerName}${c.reset}`);
+    console.error(`${c.dim}Valid: ${Object.keys(PROVIDERS).join(', ')}${c.reset}`);
+    process.exit(1);
+  }
+  if (!fromDir || !existsSync(fromDir)) {
+    console.error(`${c.red}--from-dir <dir> required; directory must exist and contain q1.txt, q2.txt, q3.txt${c.reset}`);
+    process.exit(1);
+  }
+  if (!existsSync(CONFIG_FILE)) {
+    console.error(`${c.red}No ${CONFIG_FILE} found. Run: aeo-platform init${c.reset}`);
+    process.exit(1);
+  }
+
+  const config = await readConfigOrExit();
+  const { brand, domain, queries: rawQueriesManual } = config;
+  const brandAliasesManual = Array.isArray(config.brandAliases) ? config.brandAliases : [];
+  const { texts: queries, tags: queryTagsManual, brandFits: queryBrandFitsManual } = normalizeQueries(rawQueriesManual);
+  // MEAS-1 — same manifest lookup as the live run; declared market only, never guessed.
+  const manualBasketIdx = manifestIndex(config.basketManifest || null);
+  const manualDeclaredMarketFor = (text) => manualBasketIdx.byText.get(normalizeQueryText(text))?.market ?? null;
+  const providerCfg = (config.providers || DEFAULT_CONFIG.providers)[providerName] || PROVIDERS[providerName];
+  const providerLabel = PROVIDERS[providerName].label;
+  const modelUsed = providerCfg.model || 'manual';
+
+  // Pre-flight: every query needs its own paste file. Refuse partial runs —
+  // silent skip-per-file produces confusing partial _summary.json that
+  // contaminates the weekly trend. Hard-fail BEFORE any heavy work
+  // (buildExtractionProviders, mkdir, etc.) so the operator gets an instant
+  // diagnostic instead of waiting for an unrelated API-key error.
+  const expectedFiles = queries.map((_, i) => join(fromDir, `q${i + 1}.txt`));
+  const missingFiles = expectedFiles.filter(f => !existsSync(f));
+  if (missingFiles.length > 0) {
+    console.error(`\n${c.red}${SYM.err} Missing query response files in ${fromDir}:${c.reset}`);
+    missingFiles.forEach(f => console.error(`  ${c.red}✗${c.reset} ${f}`));
+    console.error(`\n${c.dim}Each query needs its own paste file (q1.txt for query 1, q2.txt for query 2, …).${c.reset}`);
+    console.error(`${c.dim}Paste the AI engine's response into the missing file(s) and re-run.${c.reset}`);
+    process.exit(1);
+  }
+
+  const date = new Date().toISOString().split('T')[0];
+  const responseDir = responseDateDirForWrite(domain, date);
+  await mkdir(responseDir, { recursive: true });
+
+  console.log(`\n${c.bold}aeo-platform — run-manual${c.reset}`);
+  console.log(`${c.dim}Provider: ${providerLabel} | Source: ${fromDir}${c.reset}\n`);
+
+  let extractionProvidersManual;
+  try {
+    // Resolve the classify tier the SAME way `run` does — live discovery first,
+    // config pin second, shipped FALLBACK last (resolveClassifyModel). Reading
+    // config.providers verbatim here is what split one run's cells across two
+    // different classifiers: on 2026-09-01 the API leg was labelled by the
+    // discovered `gemini-3.1-flash-lite + gpt-4o-mini` while these manual legs
+    // used the config's `gemini-3.5-flash + gpt-5-nano`. Cells of one run,
+    // compared against each other, judged by different graders — and the
+    // difference was invisible in the summary. Same reason resolveClassifyModel
+    // exists for the report path: a config pin goes stale, discovery does not.
+    extractionProvidersManual = await buildExtractionProviders(
+      await resolveClassifyProviderConfig(config.providers),
+    );
+  } catch (err) {
+    console.error(`\n${c.red}${SYM.err} ${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+  console.log(`${c.dim}  Extractor: ${extractionProvidersManual.secondary
+    ? `${extractionProvidersManual.primary.model} + ${extractionProvidersManual.secondary.model} (parallel)`
+    : `${extractionProvidersManual.primary.model} (single-model — competitor mentions will be unverified)`}${c.reset}\n`);
+
+  // Real LLM calls per iteration (extraction + sentiment + prose-rank, in
+  // parallel) with no live-status manager unlike cmdRun's loop — without a
+  // spinner this reads as a hang for however long those calls take.
+  const runManualSpinner = createSpinner();
+  const newResults = [];
+  for (let qi = 0; qi < queries.length; qi++) {
+    const query = queries[qi];
+    const queryFile = join(fromDir, `q${qi + 1}.txt`);
+    const tag = `Q${qi + 1}/${providerName}`;
+
+    const text = await readFile(queryFile, 'utf-8');
+    const citations = extractUrls(text);
+    const mention = detectMention(text, citations, brand, domain, brandAliasesManual);
+    const position = mention === 'yes' ? findPosition(text, brand, domain, brandAliasesManual) : null;
+    // Extraction and sentiment run in parallel (independent classify-tier calls).
+    const sentimentTaskManual = (mention === 'yes' || mention === 'src')
+      ? classifySentimentWithTwoModels({
+          text, brand, domain,
+          primary:   extractionProvidersManual.primary,
+          secondary: extractionProvidersManual.secondary,
+        })
+      : Promise.resolve(null);
+    // AP-PROSE-RANK — same gate as the live path: prose body-mention only.
+    const proseRankTaskManual = (mention === 'yes' && position === null)
+      ? extractProseRankWithTwoModels({
+          text, brand, domain,
+          primary:   extractionProvidersManual.primary,
+          secondary: extractionProvidersManual.secondary,
+        })
+      : Promise.resolve(null);
+    const isTTY = !!process.stdout.isTTY;
+    runManualSpinner.start(`[${tag}] classifying extracted response...`);
+    if (!isTTY) console.log(`${c.dim}  [${tag}] classifying extracted response...${c.reset}`);
+    let extractionManual, sentimentManual, proseRankManual;
+    try {
+      [extractionManual, sentimentManual, proseRankManual] = await Promise.all([
+        extractWithTwoModels({
+          text, brand, domain,
+          category: config.category || '',
+          primary:   extractionProvidersManual.primary,
+          secondary: extractionProvidersManual.secondary,
+        }),
+        sentimentTaskManual,
+        proseRankTaskManual,
+      ]);
+    } finally {
+      runManualSpinner.stop();
+    }
+    const competitors           = extractionManual.verified;
+    const competitorsUnverified = extractionManual.unverified;
+    const canonicalCitations = [...new Set(citations)];
+    const responseQuality = classifyResponseQuality({
+      text, citations,
+      competitors: [...competitors, ...competitorsUnverified],
+    });
+
+    // Save raw paste for audit
+    const rawFile = join(responseDir, `q${qi + 1}-${providerName}-manual.txt`);
+    await writeFile(rawFile, text);
+
+    const storeManualSources = competitorsUnverified.length > 0
+      || !!extractionManual.sources.primary?.error
+      || !!extractionManual.sources.secondary?.error;
+    newResults.push({
+      query: `Q${qi + 1}`,
+      queryText: query,
+      // Same stable identity the live run writes (MEAS-1) — a pasted answer and
+      // an API answer to the same question must compare as the same question.
+      queryId: queryIdFor(query),
+      ...(manualDeclaredMarketFor(query) ? { market: manualDeclaredMarketFor(query) } : {}),
+      provider: providerName,
+      label: providerLabel,
+      model: modelUsed,
+      source: 'manual-paste',
+      mention,
+      position,
+      citationCount: citations.length,
+      canonicalCitations,
+      competitors,
+      competitorsUnverified,
+      ...(storeManualSources ? { extractionSources: extractionManual.sources } : {}),
+      ...(sentimentManual ? { sentiment: { label: sentimentManual.label, confidence: sentimentManual.confidence, rationale: sentimentManual.rationale } } : {}),
+      // Shared field-builder with the live run loop (lib/report/prose-rank.js)
+      // so the manual and live sinks can never drift.
+      ...proseRankField(proseRankManual),
+      ...(queryTagsManual[qi] ? { tag: queryTagsManual[qi] } : {}),
+      ...(queryBrandFitsManual[qi] ? { brandFit: queryBrandFitsManual[qi] } : {}),
+      responseQuality,
+      // Registrable-domain (eTLD+1) match — not raw substring — so a look-alike
+      // citation host never counts as a brand citation (lib/report/own-domain.js).
+      hasBrandInCitations: citations.some(u => isOwnDomain(u, domain)),
+      // Same truncation as the live run loop — without this the manual-paste
+      // cells vanish from every "what the engine said" surface (report + MC).
+      responseExcerpt: String(text || '').slice(0, 1500),
+      elapsedMs: null,
+    });
+
+    const icon = mention === 'yes' ? `${c.green}YES` : mention === 'src' ? `${c.yellow}SRC` : `${c.red}NO`;
+    console.log(`  ${icon}${c.reset} ${tag} (${citations.length} URLs extracted)`);
+  }
+
+  if (newResults.length === 0) {
+    console.error(`\n${c.red}No query files found in ${fromDir}. Expected q1.txt, q2.txt, q3.txt${c.reset}`);
+    process.exit(1);
+  }
+
+  // ─── Merge with existing _summary.json for today (if any) ───
+  const summaryPath = join(responseDir, '_summary.json');
+  let existing = null;
+  if (existsSync(summaryPath)) {
+    try {
+      existing = JSON.parse(await readFile(summaryPath, 'utf-8'));
+    } catch {
+      // A half-written summary from an interrupted run used to crash run-manual
+      // with a bare SyntaxError. Merge from scratch instead — and say so.
+      console.log(`${c.yellow}  Today's _summary.json was unreadable (likely an interrupted earlier run) — rebuilding it from this paste.${c.reset}`);
+    }
+  }
+
+  // Remove prior results for this provider (overwrite behaviour)
+  const keptResults = (existing?.results || []).filter(r => r.provider !== providerName);
+  const allResults = [...keptResults, ...newResults];
+
+  // Recompute aggregates through the SAME helper the live run uses — a merged
+  // day and a live day must not compute their headline two different ways
+  // (lib/score.js).
+  const mergedScore = aggregateScore(allResults);
+  const total = mergedScore.valid;
+  const mentions = mergedScore.hits;
+  const score = mergedScore.score;
+  const errors = mergedScore.errors;
+  const attempts = mergedScore.attempts;
+
+  // Same shared aggregator the live run loop uses — including the unverified-only
+  // tier, which this command previously never recomputed, so a merge left it
+  // describing the pre-merge providers.
+  const { topCompetitors: mergedTopCompetitors, unverifiedOnly: mergedUnverifiedOnly } =
+    aggregateCompetitorCounts(allResults);
+
+  // #12: merge same-page citation variants under one canonical key.
+  const topCanonicalSources = aggregateCanonicalSources(
+    allResults.flatMap(r => r.canonicalCitations || []), 20,
+  );
+
+  const topDomains = computeTopDomains(allResults, 10);
+
+  const regressionThreshold = existing?.regressionThreshold
+    ?? (typeof config.regressionThreshold === 'number' ? config.regressionThreshold : 10);
+
+  // MERGE, don't rebuild. `run-manual` ADDS one provider column to a day that a
+  // live `run` may already have measured — it must not silently drop the parts of
+  // that day it didn't measure itself. Rebuilding from a fixed field list erased
+  // every other section the API run had collected: the domain-level scans
+  // (crawlability, authorityPresence, pageSignals, entityGraph), the results-derived
+  // report sections (citationClassification, competitorPricing, llmActions,
+  // outreachTemplates), the run's own cost telemetry (sessionCostUsd / costByModel),
+  // and the `measurement` disclaimer + `unverifiedOnly` tier. A later `report`
+  // re-fetches most of that — paying for the LLM-derived sections a second time —
+  // but `measurement`, `unverifiedOnly` and the run-time cost breakdown are only
+  // ever written by `run`, so they were gone for good.
+  //
+  // So: carry `existing` forward wholesale, then override exactly the fields this
+  // command genuinely recomputes over the merged result set (below). Anything not
+  // in that override list is the earlier run's data and survives untouched.
+  const summary = {
+    ...(existing || {}),
+    date,
+    brand,
+    domain,
+    score,
+    mentions,
+    total,
+    errors,
+    measurementCounts: {
+      hits: mentions,
+      valid: total,
+      attempts,
+      errors,
+      cells: mergedScore.cells,
+      definition: 'score = hits / valid; valid = attempts − errors; errors are never in the denominator',
+    },
+    regressionThreshold,
+    extractorMode: extractionProvidersManual.secondary ? 'dual' : 'single',
+    // Which models graded THIS merge's cells. `run-manual` and `run` are two
+    // commands executed minutes or days apart, so even with both now resolving
+    // the classify tier the same way (resolveClassifyProviderConfig) the two
+    // legs can legitimately land on different graders if a vendor rolls a model
+    // between them. Naming the grader in the artifact is what makes that
+    // knowable from the summary instead of from two terminal scrollbacks.
+    extractorModels: extractorModelList(extractionProvidersManual),
+    generatedBy: `aeo-platform@${TRACKER_VERSION}`,
+    results: allResults,
+    topCompetitors: mergedTopCompetitors,
+    unverifiedOnly: mergedUnverifiedOnly,
+    topCanonicalSources,
+    topDomains,
+    adsDetected: summariseAdsAcrossResults(allResults),
+  };
+  await atomicWriteJson(summaryPath, summary);
+
+  console.log(`\n${c.bold}  Merged into: ${summaryPath}${c.reset}`);
+  console.log(`  Score: ${c.bold}${score}%${c.reset} (${mentions}/${total} across ${new Set(allResults.map(r => r.provider)).size} providers)\n`);
+
+  // Sections that `report` CACHES (it skips regeneration when the field is already
+  // present) AND that derive from the results — the citation set for the first,
+  // `topCompetitors` for `competitorPricing`, both for the last two. Carried
+  // forward, each now describes only the providers that ran BEFORE this merge. Say
+  // so: silently serving a partial classification as if it covered the whole day is
+  // the same class of dishonesty as the rebuild that used to drop it. Refreshing
+  // costs LLM calls, so name the command instead of spending on the user's behalf.
+  //
+  // `competitorPricing` belongs here even though it looks domain-ish: it is
+  // classified FROM `topCompetitors`, which this command recomputes on every merge,
+  // and `competitorOwnedHosts()` (lib/report/sections.js) reads its `.domain` values
+  // to build the outreach host set — so leaving it out would carry a stale competitor
+  // set into a section the hint claims to fix. The domain-level scans above
+  // (crawlability, authorityPresence, pageSignals, entityGraph) genuinely do not
+  // depend on which providers ran, and are NOT listed.
+  const STALE_AFTER_MERGE = [
+    'citationClassification',
+    'competitorPricing',
+    'llmActions',
+    'outreachTemplates',
+  ];
+  const carriedStale = STALE_AFTER_MERGE.filter(f => existing?.[f] !== undefined);
+  if (carriedStale.length > 0) {
+    console.log(`  ${c.dim}Carried forward from this day's earlier run: ${carriedStale.join(', ')} —`);
+    console.log(`  derived before the ${providerName} column existed. To regenerate over the full set:`);
+    console.log(`  aeo-platform report --refresh-cache=${carriedStale.join(',')}${c.reset}\n`);
+  }
+
+  // Exit-code parity with `run` (README contract). run-manual doesn't call APIs,
+  // so code 3 (all providers errored) is unreachable here.
+  const previousScore = await readPreviousScore(domain, date);
+
+  let exitCode;
+  if (mentions === 0) exitCode = 2;
+  else if (previousScore !== null && score - previousScore < -regressionThreshold) exitCode = 1;
+  else exitCode = 0;
+
+  // Next-step hint (mirrors cmdRun). run-manual has no exitCode 3 or silent
+  // mode, so no guards needed.
+  console.log(`\nNext: ${c.cyan}aeo-platform report --html${c.reset}  ${c.dim}(or 'aeo-platform report' for markdown-only)${c.reset}\n`);
+
+  process.exit(exitCode);
+}
+
+// ─── Commands (diff) ───
+
+/**
+ * v0.6 — flatten every snapshot in aeo-responses/ to CSV (or JSON array) for
+ * BI ingestion. One row per result cell. Writes to stdout if --output is
+ * omitted, or to the file otherwise.
+ */
+async function cmdExport(args = {}) {
+  // Lazy-load CSV / JSON serialiser only when this command runs.
+  const { snapshotsToCsv, snapshotsToJson, flattenSummary } = await import('../lib/report/csv-export.js');
+
+  let activeDomain;
+  try {
+    activeDomain = await resolveActiveDomain();
+  } catch (err) {
+    console.error(`${c.red}${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+  const dates = responseDatesForRead(activeDomain);
+  const snapshots = [];
+  for (const date of dates) {
+    const dateDir = responseDateDirForRead(activeDomain, date);
+    if (!dateDir) continue;
+    const summaryPath = join(dateDir, '_summary.json');
+    if (existsSync(summaryPath)) {
+      try { snapshots.push(JSON.parse(await readFile(summaryPath, 'utf-8'))); }
+      catch { /* skip malformed */ }
+    }
+  }
+  if (snapshots.length === 0) {
+    console.error(`${c.red}No compatible _summary.json files found for ${activeDomain || 'this project'}.${c.reset}`);
+    process.exit(1);
+  }
+
+  const fmt = (args.format || 'csv').toLowerCase();
+  if (fmt !== 'csv' && fmt !== 'json') {
+    console.error(`${c.red}Unknown format: ${fmt}. Use --format=csv or --format=json.${c.reset}`);
+    process.exit(1);
+  }
+
+  const output = fmt === 'csv' ? snapshotsToCsv(snapshots) : snapshotsToJson(snapshots);
+
+  if (args.output) {
+    await writeFile(args.output, output);
+    // Count rows from the DATA, never from newlines in the serialised text.
+    // The old `output.split('\n').length - 1` counted the CSV header as a data
+    // row (off by one on every CSV export) and, on `--format=json`, counted
+    // the ~19 pretty-printed lines each row object occupies — so a 18-row JSON
+    // export reported "343 rows". `flattenSummary` is the same function both
+    // serialisers use, so this count cannot drift from the file's contents.
+    const rows = snapshots.reduce((n, s) => n + flattenSummary(s).length, 0);
+    console.log(`${c.green}${SYM.ok} Exported ${snapshots.length} run${snapshots.length !== 1 ? 's' : ''} (${rows} rows) → ${args.output}${c.reset}`);
+  } else {
+    process.stdout.write(output);
+  }
+}
+
+/**
+ * v0.6 — parse Apache/nginx access log to count AI bot crawl frequency.
+ * User pipes their server's access.log through --log-file. We extract
+ * User-Agent strings, match against AI_BOTS, count requests per bot.
+ */
+async function cmdCrawlStats(args = {}) {
+  if (!args.logFile) {
+    console.error(`${c.red}--log-file=path required. Example: aeo-platform crawl-stats --log-file=/var/log/nginx/access.log${c.reset}`);
+    process.exit(1);
+  }
+  if (!existsSync(args.logFile)) {
+    console.error(`${c.red}Log file not found: ${args.logFile}${c.reset}`);
+    process.exit(1);
+  }
+
+  // Stream-parse line-by-line so 500MB+ access logs don't OOM the Node heap.
+  // Memory is O(1) regardless of file size. The 100MB threshold is the
+  // typical-vs-large boundary — surface a "this may take a while" line so
+  // the operator knows it's not hung.
+  const { parseLogLine, summariseBotCrawls } = await import('../lib/report/log-parser.js');
+  const { createReadStream, statSync } = await import('node:fs');
+  const { createInterface: createReadline } = await import('node:readline');
+
+  const size = statSync(args.logFile).size;
+  if (size > 100 * 1024 * 1024) {
+    console.log(`${c.dim}  Streaming ${Math.round(size / 1024 / 1024)}MB log — this may take 30-60s${c.reset}`);
+  }
+
+  const entries = [];
+  try {
+    const stream = createReadStream(args.logFile, { encoding: 'utf-8' });
+    const rl = createReadline({ input: stream, crlfDelay: Infinity });
+    for await (const line of rl) {
+      const entry = parseLogLine(line);
+      if (entry) entries.push(entry);
+    }
+  } catch (err) {
+    console.error(`${c.red}${SYM.err} Failed to stream-read ${args.logFile}: ${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+  const stats = summariseBotCrawls(entries);
+
+  if (stats.totalBotHits === 0) {
+    console.log(`${c.yellow}No AI bot hits found in ${entries.length} log entries.${c.reset}`);
+    console.log(`${c.dim}This could mean: (1) AI bots haven't crawled yet, or (2) log format isn't Combined/CLF — check User-Agent field.${c.reset}`);
+    return;
+  }
+
+  console.log(`\n${c.bold}AI Bot Crawl Stats — ${args.logFile}${c.reset}`);
+  console.log(`${c.dim}${entries.length} log lines parsed · ${stats.totalBotHits} AI bot hits · ${Object.keys(stats.byBot).length} distinct bots${c.reset}\n`);
+
+  const sortedBots = Object.entries(stats.byBot).sort((a, b) => b[1].hits - a[1].hits);
+  for (const [bot, info] of sortedBots) {
+    const days = info.firstSeen && info.lastSeen ? `${info.firstSeen} → ${info.lastSeen}` : '';
+    console.log(`  ${c.cyan}${bot.padEnd(20)}${c.reset} ${String(info.hits).padStart(6)} hits   ${c.dim}${days}${c.reset}`);
+  }
+
+  if (args.output) {
+    await writeFile(args.output, JSON.stringify(stats, null, 2));
+    console.log(`\n${c.green}${SYM.ok} Saved to ${args.output}${c.reset}`);
+  }
+}
+
+async function cmdDiff(argv) {
+  let activeDomain;
+  try {
+    activeDomain = await resolveActiveDomain();
+  } catch (err) {
+    console.error(`${c.red}${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+  const allDates = responseDatesForRead(activeDomain);
+
+  // Parse args: aeo-platform diff [dateA] [dateB] | --last N | --since DATE
+  const args = {};
+  for (let i = 0; i < argv.length; i++) {
+    if (argv[i] === '--last' && argv[i + 1]) { args.last = Number(argv[i + 1]); i++; }
+    else if (argv[i] === '--since' && argv[i + 1]) { args.since = argv[i + 1]; i++; }
+    else if (!argv[i].startsWith('--')) {
+      if (!args.dateA) args.dateA = argv[i];
+      else if (!args.dateB) args.dateB = argv[i];
+    }
+  }
+
+  let dateA, dateB;
+  if (args.last) {
+    if (allDates.length < args.last) {
+      console.error(`${c.yellow}Only ${allDates.length} runs found, need ${args.last}.${c.reset}`);
+      process.exit(1);
+    }
+    dateA = allDates[allDates.length - args.last];
+    dateB = allDates[allDates.length - 1];
+  } else if (args.since) {
+    dateA = args.since;
+    dateB = allDates[allDates.length - 1];
+  } else if (args.dateA && args.dateB) {
+    dateA = args.dateA; dateB = args.dateB;
+  } else {
+    if (allDates.length < 2) {
+      console.error(`${c.yellow}Need at least 2 runs to diff. Found ${allDates.length}.${c.reset}`);
+      process.exit(1);
+    }
+    dateA = allDates[allDates.length - 2];
+    dateB = allDates[allDates.length - 1];
+  }
+
+  // Pre-check: caller-supplied dates (from --since or positional A B) may not
+  // exist in the snapshots directory. Raw `No _summary.json for X` errors are
+  // unhelpful; list available dates so the operator can pick one.
+  const missingDates = [dateA, dateB].filter(d => !allDates.includes(d));
+  if (missingDates.length > 0) {
+    console.error(`${c.red}${SYM.err} No run found for: ${missingDates.join(', ')}${c.reset}`);
+    console.error(`${c.dim}Available dates: ${allDates.join(', ')}${c.reset}`);
+    console.error(`${c.dim}Use one of those, or \`aeo-platform diff --last 2\` for the most recent pair.${c.reset}`);
+    process.exit(1);
+  }
+
+  const load = async (d) => {
+    const dateDir = responseDateDirForRead(activeDomain, d);
+    const p = dateDir ? join(dateDir, '_summary.json') : null;
+    if (!p || !existsSync(p)) throw new Error(`No _summary.json for ${d}`);
+    return JSON.parse(await readFile(p, 'utf-8'));
+  };
+
+  let summaryA, summaryB;
+  try {
+    [summaryA, summaryB] = await Promise.all([load(dateA), load(dateB)]);
+  } catch (err) {
+    console.error(`${c.red}${errMsg(err)}${c.reset}`);
+    process.exit(1);
+  }
+
+  // MEAS-1 — the two runs may live in two trees; say which one we are reading.
+  // `diff` runs without a config in some setups (a bare snapshots directory),
+  // so the config is optional here: absent → no manifest, no run-root line.
+  let diffConfig = null;
+  if (existsSync(CONFIG_FILE)) {
+    try { diffConfig = JSON.parse(await readFile(CONFIG_FILE, 'utf-8')); }
+    catch { /* unreadable config — the diff still works, just without declared markets */ }
+  }
+  if (diffConfig) warnIfNotCanonicalRunRoot(diffConfig, 'diff');
+
+  // MEAS-3 — the manifest supplies DECLARED markets. Prefer the one each run
+  // recorded (a run is a record of the basket it measured); fall back to the
+  // config's current manifest for snapshots written before this version.
+  const result = diff(summaryA, summaryB, {
+    manifest: summaryB.basketManifest || summaryA.basketManifest || diffConfig?.basketManifest || null,
+  });
+
+  console.log(`\n${c.bold}aeo-platform — diff${c.reset}`);
+  console.log(`${c.dim}Brand: ${summaryA.brand}${c.reset}`);
+  console.log(`${c.dim}From: ${dateA} — score ${summaryA.score}% (${summaryA.mentions}/${summaryA.total})${c.reset}`);
+  console.log(`${c.dim}To:   ${dateB} — score ${summaryB.score}% (${summaryB.mentions}/${summaryB.total})${c.reset}`);
+
+  // Basket line first: whether these two runs asked the same questions decides
+  // what every number below is allowed to mean.
+  const bk = result.basket;
+  if (bk.changed) {
+    console.log(`\n${c.yellow}${SYM.warn} The basket changed between these runs — the headline scores are not comparable.${c.reset}`);
+    console.log(`  ${c.dim}Comparable questions (asked in both): ${c.reset}${c.bold}${bk.comparable}${c.reset}`);
+    console.log(`  ${c.dim}Asked only on ${dateB} (no baseline): ${c.reset}${bk.incomparable}`);
+    console.log(`  ${c.dim}Asked only on ${dateA} (not asked now): ${c.reset}${bk.retired}`);
+    if (bk.marketChanged > 0) {
+      console.log(`  ${c.dim}Same text, different declared market: ${c.reset}${bk.marketChanged}`);
+    }
+    console.log(`${c.bold}Score delta: ${c.dim}not reported — the two headlines were computed over different question sets.${c.reset}`);
+    if (result.intersection) {
+      const i = result.intersection;
+      const col = i.delta > 0 ? c.green : i.delta < 0 ? c.red : c.dim;
+      const sign = i.delta > 0 ? '+' : '';
+      console.log(`${c.bold}Like-for-like: ${col}${sign}${i.delta}pp${c.reset}${c.dim} (${i.scoreA}% → ${i.scoreB}%) over the ${i.questionsCompared} question${i.questionsCompared === 1 ? '' : 's'} both runs asked — ${i.cellsCompared} cells.${c.reset}`);
+    } else {
+      console.log(`${c.dim}No question was asked in both runs — there is nothing to compare.${c.reset}`);
+    }
+    console.log('');
+  } else {
+    const deltaColor = result.scoreDelta > 0 ? c.green : result.scoreDelta < 0 ? c.red : c.dim;
+    const deltaSign = result.scoreDelta > 0 ? '+' : '';
+    console.log(`${c.dim}Basket: identical — ${bk.comparable} question${bk.comparable === 1 ? '' : 's'} in both runs.${c.reset}`);
+    console.log(`${c.bold}Score delta: ${deltaColor}${deltaSign}${result.scoreDelta}pp${c.reset}\n`);
+  }
+  if (bk.identity === 'label') {
+    console.log(`${c.dim}  Note: at least one run predates per-question ids, so these runs were matched by position (Q1, Q2, …). If the basket was ever reordered, that match is unreliable.${c.reset}`);
+  }
+  if (bk.onlyInNew.length > 0) {
+    console.log(`${c.dim}  New questions with no baseline (showing up to 5 of ${bk.onlyInNew.length}):${c.reset}`);
+    for (const q of bk.onlyInNew.slice(0, 5)) console.log(`    ${c.dim}· ${q.text || q.label || q.id}${c.reset}`);
+  }
+
+  if (result.cellChanges.length > 0) {
+    console.log(`${c.bold}  Cell changes:${c.reset}`);
+    for (const ch of result.cellChanges) {
+      const gained = (ch.was === 'no' || ch.was === 'missing') && (ch.now === 'yes' || ch.now === 'src');
+      const lost = (ch.was === 'yes' || ch.was === 'src') && (ch.now === 'no' || ch.now === 'missing');
+      const arrow = gained ? `${c.green}↑ Gained${c.reset}` : lost ? `${c.red}↓ Lost  ${c.reset}` : `${c.yellow}~ Moved ${c.reset}`;
+      // The question TEXT, not only its ordinal label: the label is a position
+      // in whichever basket the run used, and these rows now cross two runs
+      // that may number the same question differently.
+      const qShown = ch.queryText ? ch.queryText.slice(0, 52) : ch.query;
+      const mkt = ch.market ? `[${ch.market}] ` : '';
+      console.log(`    ${arrow}  ${ch.provider.padEnd(10)} ${String(ch.was).padEnd(5)} → ${String(ch.now).padEnd(5)} ${mkt}${qShown}`);
+    }
+  } else {
+    console.log(`${c.dim}  No cell changes between runs.${c.reset}`);
+  }
+
+  if (result.newCompetitors.length > 0) {
+    console.log(`\n${c.bold}  New competitors:${c.reset}`);
+    for (const { name, count } of result.newCompetitors) {
+      console.log(`    ${c.cyan}+ ${name}${c.reset} (${count} mentions)`);
+    }
+  }
+  if (result.lostCompetitors.length > 0) {
+    console.log(`\n${c.bold}  Competitors that fell off:${c.reset}`);
+    for (const { name, count } of result.lostCompetitors) {
+      console.log(`    ${c.dim}- ${name} (was ${count})${c.reset}`);
+    }
+  }
+  if (result.sourcesMovement.gained.length > 0) {
+    console.log(`\n${c.bold}  New canonical sources:${c.reset}`);
+    for (const { url, count } of result.sourcesMovement.gained.slice(0, 5)) {
+      const short = url.length > 70 ? url.slice(0, 67) + '...' : url;
+      console.log(`    ${c.green}+${c.reset} ${short} (${count}×)`);
+    }
+  }
+  if (result.sourcesMovement.lost.length > 0) {
+    console.log(`\n${c.bold}  Sources no longer cited:${c.reset}`);
+    for (const { url, count } of result.sourcesMovement.lost.slice(0, 5)) {
+      const short = url.length > 70 ? url.slice(0, 67) + '...' : url;
+      console.log(`    ${c.dim}- ${short} (was ${count}×)${c.reset}`);
+    }
+  }
+  console.log('');
+
+  const regressionThreshold =
+    summaryB.regressionThreshold ?? summaryA.regressionThreshold ?? 10;
+  // Regression exit-1 fires ONLY on a delta that exists. When the basket
+  // changed there is no overall delta (`null`), and a changed basket must never
+  // fail a pipeline as if visibility had dropped — the explicit type check says
+  // that on purpose, rather than relying on `null < -10` being falsy.
+  if (typeof result.scoreDelta === 'number' && result.scoreDelta < -regressionThreshold) process.exit(1);
+  process.exit(0);
+}
+
+// ─── CLI Entry ───
+
+const HELP = `
+${c.bold}aeo-platform${c.reset} — Track brand visibility in AI answer engines
+
+${c.bold}Usage:${c.reset}
+  aeo-platform init                    Create .aeo-tracker.json config
+  aeo-platform init --queries-only     Re-suggest queries without changing brand/domain/providers
+  aeo-platform init --no-key-check     Skip the live authentication probe (offline/CI); format checks still run
+  aeo-platform run          Run visibility audit (reads config, calls APIs)
+  aeo-platform run --json   Same, but print structured JSON to stdout (for CI pipelines)
+  aeo-platform run --strict-model-pin
+                           Fail the run (exit 1) if a provider serves a different model lineage
+                           than requested on an answer cell (floating-alias hot-swap). Default is
+                           a loud WARN + requested/served provenance in the run JSON. Use to keep
+                           a frozen-basket monthly timeline apples-to-apples.
+  aeo-platform run --samples N
+                           Query each cell N times instead of once, so a noisy LLM flip
+                           doesn't masquerade as a real change. Presence then carries a
+                           Wilson confidence interval (e.g. «3/5 · 95% CI [0.23, 0.88]») and
+                           diff treats a change as noise when the intervals overlap. Default
+                           1 (single-shot, byte-identical to before). Cost scales ~N×;
+                           capped at 25. Recommended: 5.
+  aeo-platform run --replay [--replay-from=YYYY-MM-DD]
+                           Replay mode — rebuild today's summary from cached raw responses
+                           instead of calling APIs. Zero API cost. Useful for: iterating on
+                           the report/parser locally, re-generating a summary with updated
+                           extractor logic against historical data. Defaults to the most
+                           recent captured snapshot unless --replay-from is given.
+  aeo-platform run-manual P --from-dir D   Import manual paste responses for provider P
+                                          from directory D containing q1.txt, q2.txt, q3.txt
+                                          (for engines without a usable API: Perplexity, Copilot,
+                                          ChatGPT Pro UI, Claude.ai). Merges into today's summary.
+  aeo-platform diff A B     Compare two runs by date (YYYY-MM-DD); shows delta table
+  aeo-platform diff --last N       Compare the last N runs (default: 2)
+  aeo-platform diff --since DATE   Compare a date with the latest run
+  aeo-platform report       Generate the report. Writes report.md (markdown) AND report.html
+                           (single-file bento layout — offline-ready, embedded fonts, vanilla JS)
+                           and opens the HTML in your browser.
+                           Output: aeo-reports/<domain>/<date>/report.{md,html}
+  aeo-platform report --output path.md   Custom output path (paired .html written alongside)
+  aeo-platform report --no-html          Markdown only — skips HTML write and browser open.
+                                        Use for CI / email diffs / lightweight automation.
+  aeo-platform report --no-open          Write report.{md,html} but don't auto-open the browser.
+  aeo-platform report --public           Public-proof mode — omit the session-cost card ($/run +
+                                        per-engine $ + tokens) and source-path footnotes (lib/…)
+                                        so a HOSTED proof report is leak-free by construction.
+                                        The UVI formula stays; only internals are dropped.
+  aeo-platform report --for-date=YYYY-MM-DD   Render a SPECIFIC past run (an old proof report)
+                                        instead of the newest one. Reads aeo-responses/<domain>/<date>/
+                                        and builds the whole report from it; the trend is
+                                        truncated to that date. Bad/absent date → exit 1 with the
+                                        list of available dates. Composes with --public / --output.
+  aeo-platform report [--no-authority] [--no-entity-graph] [--no-page-signals] [--no-pricing]
+                           Skip optional fetch-heavy checks (Wikipedia/Reddit/GitHub authority,
+                           sameAs reciprocity, own-domain HTML crawl, competitor pricing pages).
+                           Use behind a corp VPN, when rate-limited, or for a fully offline report.
+                           Cached results still load.
+  aeo-platform report --refresh-cache=<fields>
+                           Force-refresh cached fields before report runs. Use when client's site
+                           changed and you want fresh signals without rerunning a full snapshot.
+                           Fields (CSV): pageSignals, authorityPresence, crawlability,
+                                         citationClassification, outreachTemplates, entityGraph,
+                                         competitorPricing, llmActions, adsDetected
+                           Shortcut:     --refresh-cache=all (refresh every cached field)
+                           Examples:     --refresh-cache=pageSignals,authorityPresence
+                                         --refresh-cache=all
+  aeo-platform export       Flatten this domain's aeo-responses/<domain>/*/_summary.json to CSV (default) or JSON.
+  aeo-platform export --format=json --output=runs.json
+  aeo-platform crawl-stats --log-file=path   Parse Apache/nginx access log → AI bot crawl frequency
+  aeo-platform --help       Show this help
+  aeo-platform --version    Show version
+
+${c.bold}Query validation:${c.reset}
+  Queries are validated at init (static acronym + LLM industry-fit check). Verdicts are
+  cached in .aeo-tracker.json so run doesn't re-pay. If you hand-edit queries, run will
+  auto-validate the new ones inline (shows cost). Known failure mode: "AEO consultants
+  Poland" means customs in Poland, not Answer Engine Optimization — always expand acronyms.
+  ${c.bold}--force${c.reset}                Bypass the query-validation gate (proceed despite validation blockers).
+                          Every run already re-queries every cell live — there is no response cache to bypass.
+  ${c.bold}--strict-validation${c.reset}    Cross-check query validation with 2 LLM providers (unanimous approve OR flag as split).
+                         2× validation cost. Use when reliability > latency (e.g. CI pipelines).
+  ${c.bold}--regions=us,de,pl${c.reset}     Run each query under multiple regional contexts (multiplies cost by region count).
+                         Valid codes: ${listRegionCodes()}. Adds "Visibility by Region" section.
+                         (--geo is the original name and still works as an alias.)
+  ${c.bold}--lang=de,pl${c.reset}           With --regions: ask each region's query IN the locale language (localised prompt),
+                         so the model reaches locale-native sources — the signal a PL/DACH searcher actually sees.
+                         Soft geo only: provider APIs expose no per-request geo/IP signal, so this changes the
+                         prompt language, not the request origin. Valid: ${listLangCodes()}.
+  ${c.bold}--depth=<mode>${c.reset}         web (default) — single web-search pass per cell.
+                         full — adds a training-data pass (no web search) where supported. Cost ~2×.
+                         auto — defaults to web; prompts you if last training-data baseline is stale (>14 days).
+                         Use full|auto to distinguish "absent from current SERPs" from "absent from training corpus".
+
+${c.bold}Per-run model overrides${c.reset} (no config rewrite — in-memory only):
+  ${c.bold}--openai-model=<id>${c.reset}     Pin providers.openai.model for this run
+  ${c.bold}--gemini-model=<id>${c.reset}     Pin providers.gemini.model
+  ${c.bold}--anthropic-model=<id>${c.reset}  Pin providers.anthropic.model
+  ${c.bold}--perplexity-model=<id>${c.reset} Pin providers.perplexity.model
+
+  A pin BEATS live model discovery — that is the point of it: re-measuring an earlier
+  month like-for-like means running the id that month ran, not the id that is newest
+  today. If the provider's catalogue no longer lists the pinned id, the run stops with
+  an error instead of quietly substituting another model.
+
+  OpenAI's default main is the cheapest tier of the newest generation (gpt-5.6-luna as
+  of 2026-09), which does live web search via the Responses web_search tool at the
+  general 500k-TPM bucket — NOT the legacy gpt-5-search-api SKU (its own tiny ~6k-TPM
+  bucket that cools down fast). Avoid pinning to a -search SKU except for exactly this
+  like-for-like case. See --depth=full for the training-corpus (no-search) pass
+  alongside the live-search pass.
+  --replay caveat: cached raw responses are filename-keyed by (query index, provider, model)
+  within the active domain's namespace. An override that doesn't match the recorded model — or a
+  query list reordered since capture — will miss the file and hit live API.
+
+${c.bold}Exit codes (after run):${c.reset}
+  0                        Score stable or improved
+  1                        Score dropped more than regressionThreshold (default: 10pp vs previous run)
+  2                        All checks returned zero mentions
+  3                        All providers errored
+
+${c.bold}Environment variables:${c.reset}
+  ${c.bold}Research keys${c.reset} (minimum ONE; two recommended — enables the cross-model check):
+    OPENAI_API_KEY           OpenAI API key (ChatGPT column + extractor)
+    GEMINI_API_KEY           Google AI API key (Gemini column + extractor)
+    ANTHROPIC_API_KEY        Anthropic API key (Claude column + extractor)
+  ${c.bold}Optional${c.reset} (adds one engine column to the report):
+    PERPLEXITY_API_KEY       Perplexity API key (Perplexity column)
+  ${c.bold}Debug${c.reset}:
+    AEO_DEBUG=1              Print raw stack traces alongside actionable panels
+                             (for bug reports — see github.com/webappski/aeo-platform/issues)
+    AEO_LOG_TOKENS=1         Log per-call token usage to stderr (calibrate rate-limit
+                             scheduler — pipe to "grep tokens" to see real numbers)
+    NO_COLOR=1               Strip ANSI escape codes from output (auto-detected
+                             on non-TTY; set explicitly in CI logs if you see garbage)
+
+${c.bold}Quick start:${c.reset}
+  export OPENAI_API_KEY=sk-...        # required
+  export GEMINI_API_KEY=AIza...       # required
+  aeo-platform init --yes --brand=X --domain=x.com --auto
+  aeo-platform run
+  aeo-platform report
+
+${c.bold}About:${c.reset}
+  Built by Webappski (https://webappski.com), an AEO agency.
+  We use this tool ourselves for our public AEO Visibility Challenge.
+  Read Week 1: webappski.com/blog/aeo-visibility-challenge-week-1
+
+  Source: github.com/webappski/aeo-platform
+  License: MIT
+`;
+
+const { values, positionals } = parseArgs({
+  options: {
+    help:    { type: 'boolean', short: 'h', default: false },
+    version: { type: 'boolean', short: 'v', default: false },
+    yes:     { type: 'boolean', short: 'y', default: false },
+    brand:   { type: 'string' },
+    domain:  { type: 'string' },
+    category:{ type: 'string' },
+    auto:    { type: 'boolean', default: false },
+    manual:  { type: 'boolean', default: false },
+    light:   { type: 'boolean', default: false },
+    keywords:{ type: 'string' },
+    'queries-only': { type: 'boolean', default: false },
+    // fail-branch #1/#3: skip the live authentication probe at init (offline /
+    // CI). Format checks (regex + length) still run — see I-5 help wording.
+    'no-key-check': { type: 'boolean', default: false },
+    output:  { type: 'string' },
+    'no-open': { type: 'boolean', default: false },
+    html:    { type: 'boolean', default: false },
+    json:    { type: 'boolean', default: false },
+    last:    { type: 'string' },
+    since:   { type: 'string' },
+    'from-dir': { type: 'string' },
+    force:   { type: 'boolean', default: false },
+    'strict-validation': { type: 'boolean', default: false },
+    geo:     { type: 'string' },
+    regions: { type: 'string' },                 // AP-REGION-LANG-MATRIX — operator-facing alias for --geo
+    lang:    { type: 'string' },                 // AP-REGION-LANG-MATRIX — localise per-region prompt language (de,pl,…)
+    depth:   { type: 'string' },                 // web | full | auto (default: web)
+    format:  { type: 'string' },
+    'log-file': { type: 'string' },
+    // Replay mode (see replay-mode block at top of file)
+    replay:  { type: 'boolean', default: false },
+    'replay-from': { type: 'string' },
+    // End replay
+    // AP-MEASURE-SAMPLING-CI — query each cell N times so a noisy LLM flip
+    // doesn't masquerade as a real change. Default 1 = byte-identical
+    // single-shot (R39). Records a Wilson confidence interval on presence when
+    // N>1. Cost scales ×N — a disclaimer prints before the run (like --geo).
+    samples: { type: 'string' },
+    // v0.7 — AEO Mission Control bridge opt-out
+    'no-mc-block': { type: 'boolean', default: false },
+    // v0.8 — bento HTML is the default; --no-html skips it for CI/email-only flows.
+    // `--html` is kept (no-op) for backwards-compat with existing scripts.
+    'no-html':       { type: 'boolean', default: false },
+    // Public-proof mode — omit internals that must never appear in a HOSTED
+    // proof report: the Session-cost card ($/run + per-engine $ + tokens) and
+    // the UVI source-path footnote (lib/… paths). The UVI FORMULA stays; only
+    // the file-path provenance is dropped. Leak-free by construction so a
+    // published proof report needs no manual scrub (see resources memory
+    // feedback_aeo_platform_report_leaks_cost_and_source_paths).
+    'public':        { type: 'boolean', default: false },
+    // Client-snapshot render mode (deliberately undocumented — not in --help,
+    // README, or CHANGELOG). A SUPERSET of --public: on top of dropping the
+    // cost card + source-path footnotes, it also removes every tool fingerprint
+    // (the «aeo-platform» masthead/colophon, version, repo link), the entire
+    // Webappski/Mission-Control bridge, and the recommendation/outreach blocks —
+    // leaving only the measured statistics in the same layout, under a neutral
+    // parameterizable title. Generic by design: works for any brand from config
+    // data, so it doubles as the client-deliverable mode for consulting work.
+    'white-label':   { type: 'boolean', default: false },
+    // Neutral report title for --white-label (e.g. "AEO Visibility Snapshot").
+    // Ignored unless --white-label is set; defaults to a brand+date headline.
+    'report-title':  { type: 'string' },
+    // Render a SPECIFIC historical run instead of the newest one. Re-points
+    // `report` at aeo-responses/<date>/_summary.json so an older proof report
+    // can be regenerated from data still on disk. See cmdReport --for-date block.
+    'for-date':      { type: 'string' },
+    // Optional `report` fetches — skip when offline / behind corp VPN / rate-limited
+    'no-authority':    { type: 'boolean', default: false },
+    'no-entity-graph': { type: 'boolean', default: false },
+    'no-page-signals': { type: 'boolean', default: false },
+    'no-pricing':      { type: 'boolean', default: false },
+    // v0.4 — invalidate one or more cached fields before report runs so
+    // their fetchers re-run (instead of reading stale data from
+    // _summary.json). Comma-separated field names, or "all" to refresh
+    // every refreshable field. See REFRESHABLE_FIELDS in cmdReport.
+    'refresh-cache':   { type: 'string' },
+    // v0.7 — basket versioning (additive vs replace on --queries-only)
+    'add-queries': { type: 'boolean', default: false },
+    'replace-queries': { type: 'boolean', default: false },
+    // Per-run model overrides (in-memory only — config file not rewritten).
+    // Use to swap a search-capable model (low TPM on tier 1) for its base
+    // counterpart without re-running init or editing .aeo-tracker.json.
+    'openai-model':     { type: 'string' },
+    'gemini-model':     { type: 'string' },
+    'anthropic-model':  { type: 'string' },
+    'perplexity-model': { type: 'string' },
+    // Hard-FAIL (exit 1) when a provider serves a different model lineage than
+    // requested on an answer cell. Default is WARN+provenance — this is the
+    // opt-in for CI / frozen-basket timeline guards. See lib/providers/model-drift.js.
+    'strict-model-pin': { type: 'boolean', default: false },
+  },
+  allowPositionals: true,
+  strict: false,
+});
+const command = positionals[0];
+
+// Version awareness (1.2.x): every interactive command announces which build
+// is running, whether the project carries a NEWER local copy than the binary
+// PATH resolved (the stale-global trap), and — for humans at a TTY — whether
+// a newer release exists (cached daily registry check, AEO_NO_UPDATE_CHECK=1
+// to opt out). Must never break a command: everything is wrapped.
+// Human-output commands only: `export` (CSV/JSON to stdout) and `crawl-stats`
+// are machine surfaces — a version line there corrupts the data stream
+// (caught by e2e P0-16: the CSV header became "aeo-platform v…").
+const VERSIONED_COMMANDS = new Set(['init', 'run', 'run-manual', 'report', 'diff']);
+if (VERSIONED_COMMANDS.has(command) && !values.json) {
+  console.log(`${c.dim}aeo-platform v${TRACKER_VERSION}${c.reset}`);
+  try {
+    const { detectNewerLocalCopy } = await import('../lib/util/local-version.js');
+    const localNewer = detectNewerLocalCopy({ runningVersion: TRACKER_VERSION, runningUrl: import.meta.url });
+    if (localNewer) {
+      console.log(`${c.yellow}${SYM.warn} This project has aeo-platform v${localNewer.localVersion} in node_modules, but you are running v${TRACKER_VERSION} (likely the global install).${c.reset}`);
+      console.log(`${c.yellow}  Run it as 'npx aeo-platform' or 'npm exec aeo-platform' to use the project version.${c.reset}`);
+    }
+    const { maybeCheckForUpdate, shouldSkipUpdateCheck } = await import('../lib/util/update-check.js');
+    if (!shouldSkipUpdateCheck()) {
+      const u = await maybeCheckForUpdate({ currentVersion: TRACKER_VERSION });
+      if (u.updateAvailable) {
+        console.log(`${c.yellow}Update available ${TRACKER_VERSION} → ${u.latest} · npm i -g aeo-platform  (or: npx aeo-platform@latest)${c.reset}`);
+      }
+    }
+  } catch { /* version awareness is advisory — never block the command */ }
+}
+
+// Top-level dispatcher wrapped in try/catch. Any error that escapes the
+// command-specific error handling (config corruption, filesystem issues,
+// unclassified provider edge cases, real bugs) lands here — formatUnexpectedErrorPanel
+// turns the raw stack into an actionable panel before exiting with code 1.
+// Exceptions: process.exit() from inside a command won't trigger this catch
+// (that's intentional — the command already handled its own exit).
+// Single prompter for every interactive prompt across init/run. Owned by
+// the dispatcher so the two commands don't create competing readlines on
+// the same stdin. Lifecycle handled by process.on('exit') inside the
+// module — the dispatcher's process.exit(0|1) on every code path
+// guarantees that hook fires.
+const { createPrompter } = await import('../lib/util/prompt.js');
+const prompter = createPrompter({ nonInteractive: values.yes });
+
+try {
+  if (values.help || (!command && !values.version)) {
+    console.log(HELP);
+  } else if (values.version) {
+    // Reuse the already-resolved, try/catch-guarded build version. The old
+    // path re-read + JSON.parse'd package.json with no guard, so a corrupted
+    // package.json crashed `--version` with a raw SyntaxError — the one
+    // command a user runs precisely to diagnose a broken install (fail-branch
+    // #7). TRACKER_VERSION degrades to 'unknown' instead.
+    console.log(TRACKER_VERSION);
+  } else if (command === 'init') {
+    await cmdInit({
+      ...values,
+      strictValidation: values['strict-validation'],
+      queriesOnly: values['queries-only'],
+      addQueries: values['add-queries'],
+      replaceQueries: values['replace-queries'],
+      noKeyCheck: values['no-key-check'],
+      prompter,
+    });
+  } else if (command === 'run') {
+    await cmdRun({
+      json: values.json,
+      force: values.force,
+      strictValidation: values['strict-validation'],
+      geo: values.geo,
+      regions: values.regions,                   // AP-REGION-LANG-MATRIX — alias for --geo
+      lang: values.lang,                         // AP-REGION-LANG-MATRIX — per-region prompt language
+      depth: values.depth,                       // web | full | auto (default: web)
+      // Per-run model overrides — applied via applyCliModelOverrides()
+      openaiModel:     values['openai-model'],
+      geminiModel:     values['gemini-model'],
+      anthropicModel:  values['anthropic-model'],
+      perplexityModel: values['perplexity-model'],
+      strictModelPin:  values['strict-model-pin'],
+      // Replay mode (see replay-mode block at top of file)
+      replay: values.replay,
+      replayFrom: values['replay-from'],
+      // End replay
+      // AP-MEASURE-SAMPLING-CI — trials per cell (default 1 = single-shot)
+      samples: values.samples,
+      prompter,
+    });
+  } else if (command === 'run-manual') {
+    await cmdRunManual(process.argv.slice(3));
+  } else if (command === 'diff') {
+    await cmdDiff(process.argv.slice(3));
+  } else if (command === 'report') {
+    await cmdReport({
+      output: values.output,
+      noOpen: values['no-open'],
+      noHtml: values['no-html'],
+      noMcBlock: values['no-mc-block'],
+      noAuthority:    values['no-authority'],
+      noEntityGraph:  values['no-entity-graph'],
+      noPageSignals:  values['no-page-signals'],
+      noPricing:      values['no-pricing'],
+      refreshCache:   values['refresh-cache'],
+      public:         values['public'],
+      whiteLabel:     values['white-label'],
+      reportTitle:    values['report-title'],
+      forDate:        values['for-date'],
+    });
+  } else if (command === 'export') {
+    await cmdExport({ format: values.format || 'csv', output: values.output });
+  } else if (command === 'crawl-stats') {
+    await cmdCrawlStats({ logFile: values['log-file'], output: values.output });
+  } else {
+    console.error(`${c.red}Unknown command: ${command}${c.reset}`);
+    console.log(HELP);
+    process.exit(1);
+  }
+  // CLI is done. Force-terminate so we don't depend on perfect resource
+  // hygiene across lib/ — spinner setInterval, readline on stdin, undici
+  // keep-alive socket pool, anything a future contributor adds. Node
+  // flushes stdout/stderr synchronously on process.exit, and the 'exit'
+  // event fires synchronously which runs every registered hook (e.g.
+  // prompter.close in lib/util/prompt.js).
+  process.exit(0);
+} catch (err) {
+  for (const line of formatUnexpectedErrorPanel({ err, command, useColor: USE_COLOR })) {
+    console.error(line);
+  }
+  // Emit raw stack to stderr for debugging when requested — keeps the panel
+  // clean by default, but doesn't hide the stack from developers who need it.
+  if (process.env.AEO_DEBUG === '1' && err instanceof Error && err.stack) {
+    console.error(err.stack);
+  }
+  process.exit(1);
+}

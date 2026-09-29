@@ -1,0 +1,335 @@
+{
+  "schema": 1,
+  "targetBrand": "MailerLite",
+  "sourceExportedAt": "2026-09-19T17:09:38.8469430+05:00",
+  "labelingMethod": "Manual reference labels created from the full captured response, query intent, and explicit recommendation structure. Labels are not model predictions.",
+  "taxonomy": {
+    "PRIMARY_RECOMMENDATION": "The answer selects the target as the default, leading, best, easiest, or explicit first choice for the user's question.",
+    "SHORTLISTED": "The target is one of the answer's recommended or best-fit choices, but the answer does not select it as the unique default.",
+    "ORDINARY_MENTION": "The target is mentioned descriptively or as a capable option, but the answer does not recommend it in its decision/recommendation framing.",
+    "COMPARISON_OR_QUALIFIED": "The target is recommended only under an explicit condition, as a fallback, or relative to another default choice.",
+    "CAUTIONARY": "The target remains a possible choice, but the answer's dominant framing is cautionary or warns against it for the asked use case.",
+    "NEGATIVE": "The answer explicitly advises against or negatively rejects the target for the asked use case.",
+    "ABSENT": "The target is not mentioned in the answer body.",
+    "UNCLASSIFIED": "Evidence is too ambiguous to assign a recommendation role safely."
+  },
+  "limitations": [
+    "Single brand and category.",
+    "31 valid observations across only three buyer journeys.",
+    "Gemini and Claude dominate the sample; ChatGPT has one valid observation and Perplexity none.",
+    "No real CAUTIONARY or NEGATIVE MailerLite examples occur in this corpus, so those labels cannot be empirically validated here.",
+    "Repeated answers from the same engines are correlated; this is an evaluation corpus, not an estimate of population-wide recommendation behavior."
+  ],
+  "labels": [
+    {
+      "observationId": "q_503ef2ab3036|chatgpt|1|2026-09-19T10:22:36.566Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "chatgpt",
+      "trialIndex": 1,
+      "goldLabel": "PRIMARY_RECOMMENDATION",
+      "goldConfidence": "HIGH",
+      "rationale": "Directly calls MailerLite the easiest starting point and ends with a bottom-line instruction to choose it for the shortest learning curve."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|gemini|1|2026-09-19T10:25:03.964Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "gemini",
+      "trialIndex": 1,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Presents MailerLite as one of the top platforms and recommends it conditionally for simplicity on a tight budget rather than as the universal winner."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|gemini|2|2026-09-19T10:26:57.076Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "gemini",
+      "trialIndex": 2,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Presents MailerLite as a top small-business option in a use-case breakdown and explicitly recommends it for simple, clean, affordable marketing."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|gemini|3|2026-09-19T10:28:44.570Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "gemini",
+      "trialIndex": 3,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Places MailerLite in the best-platform set and recommends it for the beginner/general-small-business segment, not as the sole overall choice."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|gemini|4|2026-09-19T10:30:29.217Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "gemini",
+      "trialIndex": 4,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Places MailerLite in the best-platform set for beginner/ease-of-use needs within a segmented recommendation."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|gemini|5|2026-09-19T10:32:11.536Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "gemini",
+      "trialIndex": 5,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Places MailerLite in the best-platform set for beginners/simplicity and includes it in the decision checklist."
+    },
+    {
+      "observationId": "q_503ef2ab3036|gemini|1|2026-09-19T10:25:39.321Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "gemini",
+      "trialIndex": 1,
+      "goldLabel": "PRIMARY_RECOMMENDATION",
+      "goldConfidence": "HIGH",
+      "rationale": "Ranks MailerLite first for beginners, calls it the top pick, and tells the reader to choose it for the cleanest beginner experience."
+    },
+    {
+      "observationId": "q_503ef2ab3036|gemini|2|2026-09-19T10:27:35.268Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "gemini",
+      "trialIndex": 2,
+      "goldLabel": "PRIMARY_RECOMMENDATION",
+      "goldConfidence": "HIGH",
+      "rationale": "Ranks MailerLite first as best overall for beginners and includes an explicit choose-MailerLite recommendation."
+    },
+    {
+      "observationId": "q_503ef2ab3036|gemini|3|2026-09-19T10:29:20.518Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "gemini",
+      "trialIndex": 3,
+      "goldLabel": "PRIMARY_RECOMMENDATION",
+      "goldConfidence": "HIGH",
+      "rationale": "Ranks MailerLite first as best overall for beginners and explicitly recommends choosing it for a straightforward beginner experience."
+    },
+    {
+      "observationId": "q_503ef2ab3036|gemini|4|2026-09-19T10:31:02.840Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "gemini",
+      "trialIndex": 4,
+      "goldLabel": "PRIMARY_RECOMMENDATION",
+      "goldConfidence": "HIGH",
+      "rationale": "Ranks MailerLite first for simplicity and explicitly recommends choosing it for the cleanest design experience."
+    },
+    {
+      "observationId": "q_503ef2ab3036|gemini|5|2026-09-19T10:32:46.708Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "gemini",
+      "trialIndex": 5,
+      "goldLabel": "PRIMARY_RECOMMENDATION",
+      "goldConfidence": "HIGH",
+      "rationale": "Calls MailerLite one of the easiest, ranks it first for simplicity, and explicitly says to start with it for a distraction-free environment."
+    },
+    {
+      "observationId": "q_282e1231915b|gemini|1|2026-09-19T10:26:18.087Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "gemini",
+      "trialIndex": 1,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Lists MailerLite first among several top all-in-one platforms, but does not make a unique overall recommendation."
+    },
+    {
+      "observationId": "q_282e1231915b|gemini|2|2026-09-19T10:28:07.394Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "gemini",
+      "trialIndex": 2,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Lists MailerLite among the top platforms that provide the requested feature combination, without selecting one winner."
+    },
+    {
+      "observationId": "q_282e1231915b|gemini|3|2026-09-19T10:29:53.653Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "gemini",
+      "trialIndex": 3,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Lists MailerLite as a best budget-friendly/beginner option within a multi-option, use-case-specific comparison."
+    },
+    {
+      "observationId": "q_282e1231915b|gemini|4|2026-09-19T10:31:35.990Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "gemini",
+      "trialIndex": 4,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Includes MailerLite among popular industry-leading all-in-one options without selecting a single winner."
+    },
+    {
+      "observationId": "q_282e1231915b|gemini|5|2026-09-19T10:33:15.739Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "gemini",
+      "trialIndex": 5,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Includes MailerLite among several leading all-in-one options and describes its fit, without selecting a single winner."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|claude|1|2026-09-19T10:25:21.846Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "claude",
+      "trialIndex": 1,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Includes MailerLite as a worthwhile budget-friendly option and as one of the simpler choices for newsletter/update use cases."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|claude|2|2026-09-19T10:27:02.714Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "claude",
+      "trialIndex": 2,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Places MailerLite in the best-value/simplicity group and includes it in the quick decision guide for a tight-budget start."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|claude|3|2026-09-19T10:28:45.986Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "claude",
+      "trialIndex": 3,
+      "goldLabel": "ABSENT",
+      "goldConfidence": "HIGH",
+      "rationale": "MailerLite is not mentioned in the body of the answer."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|claude|4|2026-09-19T10:30:15.126Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "claude",
+      "trialIndex": 4,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Places MailerLite in the ease-of-use/beginner group and includes it in the quick recommendation logic for a tight-budget start."
+    },
+    {
+      "observationId": "q_770fd1f2ffb3|claude|5|2026-09-19T10:31:56.190Z",
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "provider": "claude",
+      "trialIndex": 5,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Places MailerLite in the best-value/budget group and includes it in the quick decision guide."
+    },
+    {
+      "observationId": "q_503ef2ab3036|claude|1|2026-09-19T10:25:52.317Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "claude",
+      "trialIndex": 1,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Mailchimp is introduced as the easiest default, but MailerLite remains explicitly co-recommended as a valid starting choice."
+    },
+    {
+      "observationId": "q_503ef2ab3036|claude|2|2026-09-19T10:27:36.559Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "claude",
+      "trialIndex": 2,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Mailchimp is introduced as the easiest default, but MailerLite remains explicitly co-recommended as a starting choice."
+    },
+    {
+      "observationId": "q_503ef2ab3036|claude|3|2026-09-19T10:29:14.155Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "claude",
+      "trialIndex": 3,
+      "goldLabel": "COMPARISON_OR_QUALIFIED",
+      "goldConfidence": "HIGH",
+      "rationale": "Mailchimp is the safest/default pick; MailerLite is recommended conditionally for someone wanting a more modern, less overwhelming interface."
+    },
+    {
+      "observationId": "q_503ef2ab3036|claude|4|2026-09-19T10:30:45.233Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "claude",
+      "trialIndex": 4,
+      "goldLabel": "COMPARISON_OR_QUALIFIED",
+      "goldConfidence": "HIGH",
+      "rationale": "Mailchimp is the safest/default pick; MailerLite is framed as the next option if Mailchimp feels overwhelming."
+    },
+    {
+      "observationId": "q_503ef2ab3036|claude|5|2026-09-19T10:32:24.497Z",
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "provider": "claude",
+      "trialIndex": 5,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "Mailchimp is introduced as the easiest entry point, but the conclusion co-recommends MailerLite or Mailchimp as the safest starting choices."
+    },
+    {
+      "observationId": "q_282e1231915b|claude|1|2026-09-19T10:26:25.322Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "claude",
+      "trialIndex": 1,
+      "goldLabel": "ORDINARY_MENTION",
+      "goldConfidence": "HIGH",
+      "rationale": "MailerLite is mentioned as capable of the feature set, but the answer's explicit recommendation section chooses other platforms and omits MailerLite."
+    },
+    {
+      "observationId": "q_282e1231915b|claude|2|2026-09-19T10:28:11.338Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "claude",
+      "trialIndex": 2,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "MailerLite is in the capable-platform list and is explicitly retained in the final recommendation for a simple, clean setup."
+    },
+    {
+      "observationId": "q_282e1231915b|claude|3|2026-09-19T10:29:40.983Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "claude",
+      "trialIndex": 3,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "MailerLite is identified as a lighter-weight alternative that still covers all four requested features, making it a viable shortlisted option."
+    },
+    {
+      "observationId": "q_282e1231915b|claude|4|2026-09-19T10:31:19.289Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "claude",
+      "trialIndex": 4,
+      "goldLabel": "SHORTLISTED",
+      "goldConfidence": "HIGH",
+      "rationale": "MailerLite is listed among platforms built around the exact requested feature combination; no single winner is chosen."
+    },
+    {
+      "observationId": "q_282e1231915b|claude|5|2026-09-19T10:33:56.372Z",
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "provider": "claude",
+      "trialIndex": 5,
+      "goldLabel": "ORDINARY_MENTION",
+      "goldConfidence": "HIGH",
+      "rationale": "MailerLite is listed as capable, but when the answer gives a single specific choice it selects Mailchimp instead."
+    }
+  ]
+}

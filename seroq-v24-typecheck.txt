@@ -1,0 +1,1 @@
+﻿components/sovereign-dashboard.tsx(1625,10): error TS2741: Property 'brandName' is missing in type '{ actions: SeroqActionItem[]; runs: ScrapeRun[]; auditReport: AuditReport | null; brandWebsites: string[]; onActionsChange: (seroqActions: SeroqActionItem[]) => void; }' but required in type 'Props'.

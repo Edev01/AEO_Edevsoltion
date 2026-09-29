@@ -1,0 +1,359 @@
+﻿/**
+ * Conservative structured-brand discovery.
+ *
+ * We intentionally do not classify every capitalised phrase as a competitor.
+ * Names are discovered only from common recommendation structures such as
+ * tables, numbered lists and headings. An unconfigured name must then recur
+ * across at least two independent observations before the report promotes it.
+ */
+
+const GENERIC =
+  new Set([
+    "platform",
+    "tool",
+    "tools",
+    "best for",
+    "starting price",
+    "standout feature",
+    "beginner ease",
+    "price",
+    "pricing",
+    "feature",
+    "features",
+    "pros",
+    "cons",
+    "recommendation",
+    "recommendations",
+    "other options",
+    "alternatives",
+    "honorable mentions",
+    "small businesses",
+    "general small businesses",
+  ]);
+
+
+function cleanCandidate(
+  value: string,
+): string {
+
+  return value
+    .replace(
+      /<[^>]+>/g,
+      "",
+    )
+    .replace(
+      /[*_`#]/g,
+      "",
+    )
+    .replace(
+      /^\s*\d+[.)]\s*/,
+      "",
+    )
+    .replace(
+      /\s+[—–:-]\s+.*$/,
+      "",
+    )
+    .replace(
+      /\s+\([^)]*\)\s*$/,
+      "",
+    )
+    .replace(
+      /\s+/g,
+      " ",
+    )
+    .trim();
+
+}
+
+
+function candidateKey(
+  value: string,
+): string {
+
+  return cleanCandidate(
+    value,
+  )
+    .toLowerCase()
+    .replace(
+      /[™®©]/g,
+      "",
+    )
+    .replace(
+      /[^\p{L}\p{N}]+/gu,
+      " ",
+    )
+    .trim();
+
+}
+
+
+function looksLikeBrand(
+  value: string,
+): boolean {
+
+  const cleaned =
+    cleanCandidate(
+      value,
+    );
+
+  const normalized =
+    candidateKey(
+      cleaned,
+    );
+
+
+  if (
+    !cleaned ||
+    !normalized ||
+    GENERIC.has(
+      normalized,
+    )
+  ) {
+
+    return false;
+
+  }
+
+
+  if (
+    cleaned.length <
+      2 ||
+    cleaned.length >
+      60
+  ) {
+
+    return false;
+
+  }
+
+
+  const words =
+    cleaned.split(
+      /\s+/,
+    );
+
+
+  if (
+    words.length >
+    5
+  ) {
+
+    return false;
+
+  }
+
+
+  if (
+    /^(what|why|how|when|where|which|if|for|the|and|or|best|top|other)\b/i.test(
+      cleaned,
+    )
+  ) {
+
+    return false;
+
+  }
+
+
+  return words.some(
+    (
+      word,
+    ) =>
+      /^[A-Z][A-Za-z0-9&.+-]*$/.test(
+        word,
+      ) ||
+      /^[A-Z]{2,}$/.test(
+        word,
+      ),
+  );
+
+}
+
+
+export function discoverStructuredBrandCandidates(
+  response: string,
+  targetBrand: string,
+): string[] {
+
+  const found =
+    new Map<
+      string,
+      string
+    >();
+
+
+  const targetKey =
+    candidateKey(
+      targetBrand,
+    );
+
+
+  const add =
+    (
+      raw: string,
+    ) => {
+
+      const candidate =
+        cleanCandidate(
+          raw,
+        );
+
+
+      const key =
+        candidateKey(
+          candidate,
+        );
+
+
+      if (
+        !key ||
+        key ===
+          targetKey ||
+        !looksLikeBrand(
+          candidate,
+        )
+      ) {
+
+        return;
+
+      }
+
+
+      if (
+        !found.has(
+          key,
+        )
+      ) {
+
+        found.set(
+          key,
+          candidate,
+        );
+
+      }
+
+    };
+
+
+  const lines =
+    String(
+      response ??
+      "",
+    )
+      .split(
+        /\r?\n/,
+      )
+      .map(
+        (
+          line,
+        ) =>
+          line.trim(),
+      )
+      .filter(
+        Boolean,
+      );
+
+
+  for (
+    const line of
+      lines
+  ) {
+
+    /*
+     * Markdown recommendation tables:
+     *
+     * | MailerLite | Small businesses | ...
+     * | Omnisend   | Ecommerce        | ...
+     */
+    if (
+      line.startsWith(
+        "|",
+      ) &&
+      line.endsWith(
+        "|",
+      )
+    ) {
+
+      const cells =
+        line
+          .slice(
+            1,
+            -1,
+          )
+          .split(
+            "|",
+          )
+          .map(
+            (
+              cell,
+            ) =>
+              cell.trim(),
+          );
+
+
+      const first =
+        cells[0] ??
+        "";
+
+
+      if (
+        first &&
+        !/^[-: ]+$/.test(
+          first,
+        )
+      ) {
+
+        add(
+          first,
+        );
+
+      }
+
+    }
+
+
+    const patterns = [
+
+      /^#{1,6}\s*(?:\d+[.)]\s*)?(.+?)$/,
+
+      /^\d+[.)]\s+\*\*(.+?)\*\*(?:\s|$)/,
+
+      /^[-*]\s+\*\*(.+?)\*\*(?:\s|$)/,
+
+      /^\*\*(.+?)\*\*(?:\s+[—–:-]|\s*$)/,
+
+      /^\d+[.)]\s+(.+?)(?:\s+[—–:-]\s+|$)/,
+
+    ];
+
+
+    for (
+      const pattern of
+        patterns
+    ) {
+
+      const match =
+        line.match(
+          pattern,
+        );
+
+
+      if (
+        match?.[1]
+      ) {
+
+        add(
+          match[1],
+        );
+
+      }
+
+    }
+
+  }
+
+
+  return [
+    ...found.values(),
+  ];
+
+}

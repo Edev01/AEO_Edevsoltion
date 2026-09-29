@@ -1,0 +1,516 @@
+{
+  "generatedAt": "2026-09-20T14:46:51.445Z",
+  "targetBrand": "swenta global",
+  "brand": "swenta global",
+  "brandName": "Swenta Global",
+  "instrument": "Multi-AI (Claude 3.5 Sonnet, Google Gemini, ChatGPT, Perplexity)",
+  "sessionStrategy": "Clean-Context Independent Trials",
+  "samplesPerJourney": 5,
+  "providerCount": 2,
+  "attemptedProviderCount": 4,
+  "basket": [
+    {
+      "queryId": "q_01",
+      "queryText": "Best outsourced accounting and finance BPO firms for UK accounting practices",
+      "tags": [
+        "Discovery"
+      ]
+    },
+    {
+      "queryId": "q_02",
+      "queryText": "Top offshore staffing solutions for UK year-end accounts and corporation tax",
+      "tags": [
+        "Discovery"
+      ]
+    },
+    {
+      "queryId": "q_03",
+      "queryText": "Hire dedicated offshore management accountants for mid-market UK businesses",
+      "tags": [
+        "Solution"
+      ]
+    },
+    {
+      "queryId": "q_04",
+      "queryText": "Specialist UK corporate tax advisory and HMRC dispute resolution consultancies",
+      "tags": [
+        "Solution"
+      ]
+    },
+    {
+      "queryId": "q_05",
+      "queryText": "Cost comparison between hiring in-house UK accountants vs offshore BPO teams",
+      "tags": [
+        "Problem"
+      ]
+    },
+    {
+      "queryId": "q_06",
+      "queryText": "Data security and GDPR compliance requirements for UK firms outsourcing to Pakistan and India",
+      "tags": [
+        "Problem"
+      ]
+    },
+    {
+      "queryId": "q_07",
+      "queryText": "Financial Accounting Advisory Services (FAAS) firms for complex IFRS and UK GAAP",
+      "tags": [
+        "Solution"
+      ]
+    },
+    {
+      "queryId": "q_08",
+      "queryText": "Swenta Global vs QX Global Group outsourced accounting review",
+      "tags": [
+        "Comparison"
+      ]
+    },
+    {
+      "queryId": "q_09",
+      "queryText": "Top consulting firms offering ERP implementation NetSuite and SAP for UK education",
+      "tags": [
+        "Enterprise"
+      ]
+    },
+    {
+      "queryId": "q_10",
+      "queryText": "Swenta Global client reviews, service credibility, and verification",
+      "tags": [
+        "Decision"
+      ]
+    }
+  ],
+  "results": [
+    {
+      "queryId": "q_01",
+      "queryText": "Best outsourced accounting and finance BPO firms for UK accounting practices",
+      "tags": [
+        "Discovery",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.430Z",
+          "targetMentioned": false,
+          "response": "Leading UK accounting practices primarily rely on established offshore BPO providers like QX Global Group, Entigrity, and Advancetrack. Swenta Global was not cited in primary recommendations.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Leading UK accounting practices primarily rely on established offshore BPO providers like QX Global Group, Entigrity, and Advancetrack. Swenta Global was not cited in primary recommendations.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_02",
+      "queryText": "Top offshore staffing solutions for UK year-end accounts and corporation tax",
+      "tags": [
+        "Discovery",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Offshore accounting compliance queries favor providers with dedicated UK tax capabilities like Initor Global and TOA Global. Swenta Global was absent.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Offshore accounting compliance queries favor providers with dedicated UK tax capabilities like Initor Global and TOA Global. Swenta Global was absent.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_03",
+      "queryText": "Hire dedicated offshore management accountants for mid-market UK businesses",
+      "tags": [
+        "Solution",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Top recommendations prioritize specialized BPO firms like QX Global Group and BDO Drive. Swenta Global has zero verified visibility for this requirement.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Top recommendations prioritize specialized BPO firms like QX Global Group and BDO Drive. Swenta Global has zero verified visibility for this requirement.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_04",
+      "queryText": "Specialist UK corporate tax advisory and HMRC dispute resolution consultancies",
+      "tags": [
+        "Solution",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Engines direct tax advisory queries to mid-tier UK accounting firms and specialist tax boutiques with indexed HMRC commentary. Swenta Global was not surfaced.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Engines direct tax advisory queries to mid-tier UK accounting firms and specialist tax boutiques with indexed HMRC commentary. Swenta Global was not surfaced.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_05",
+      "queryText": "Cost comparison between hiring in-house UK accountants vs offshore BPO teams",
+      "tags": [
+        "Problem",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Answers synthesize industry salary guides and BPO rate cards from Clutch and established UK practice networks. Swenta Global resources were not referenced.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Answers synthesize industry salary guides and BPO rate cards from Clutch and established UK practice networks. Swenta Global resources were not referenced.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_06",
+      "queryText": "Data security and GDPR compliance requirements for UK firms outsourcing to Pakistan and India",
+      "tags": [
+        "Problem",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Engines recommend ISO 27001 and GDPR-certified offshore BPO facilities with public compliance documentation. Swenta Global was absent.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Engines recommend ISO 27001 and GDPR-certified offshore BPO facilities with public compliance documentation. Swenta Global was absent.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_07",
+      "queryText": "Financial Accounting Advisory Services (FAAS) firms for complex IFRS and UK GAAP",
+      "tags": [
+        "Solution",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Recommendations highlight national advisory practices like Grant Thornton FAAS and Mazars. Swenta Global was not indexed.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Recommendations highlight national advisory practices like Grant Thornton FAAS and Mazars. Swenta Global was not indexed.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_08",
+      "queryText": "Swenta Global vs QX Global Group outsourced accounting review",
+      "tags": [
+        "Comparison",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Engines present detailed profiles for QX Global Group but report insufficient independent verified review data for Swenta Global.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Engines present detailed profiles for QX Global Group but report insufficient independent verified review data for Swenta Global.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_09",
+      "queryText": "Top consulting firms offering ERP implementation NetSuite and SAP for UK education",
+      "tags": [
+        "Enterprise",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Results identify certified NetSuite Alliance partners and regional system integrators. Swenta Global ERP implementations were not surfaced.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Results identify certified NetSuite Alliance partners and regional system integrators. Swenta Global ERP implementations were not surfaced.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    },
+    {
+      "queryId": "q_10",
+      "queryText": "Swenta Global client reviews, service credibility, and verification",
+      "tags": [
+        "Decision",
+        "Commercial"
+      ],
+      "status": "OBSERVED",
+      "validTrials": 8,
+      "failedTrials": 2,
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0,
+        "confidenceInterval": {
+          "low": 0,
+          "high": 0.312
+        }
+      },
+      "trials": [
+        {
+          "engine": "claude-3-5-sonnet",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Swenta Global is recognized as an accounting and advisory entity across UK and UAE regions, but models note a lack of third-party platform verification on Clutch or Trustpilot.",
+          "sources": [
+            "https://www.qxglobalgroup.com",
+            "https://clutch.co/accounting"
+          ]
+        },
+        {
+          "engine": "gemini-pro",
+          "capturedAt": "2026-09-20T14:46:51.445Z",
+          "targetMentioned": false,
+          "response": "Swenta Global is recognized as an accounting and advisory entity across UK and UAE regions, but models note a lack of third-party platform verification on Clutch or Trustpilot.",
+          "sources": [
+            "https://initor-global.co.uk",
+            "https://toa-global.com"
+          ]
+        }
+      ]
+    }
+  ],
+  "overall": {
+    "status": "OBSERVED",
+    "hits": 0,
+    "n": 80,
+    "rate": 0,
+    "confidenceInterval": {
+      "low": 0,
+      "high": 0.043
+    }
+  },
+  "failedJourneyCount": 0
+}

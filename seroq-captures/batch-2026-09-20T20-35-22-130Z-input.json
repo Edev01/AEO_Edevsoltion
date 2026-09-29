@@ -1,0 +1,30 @@
+{
+  "targetBrand": "Initor Global",
+  "prompts": [
+    {
+      "queryId": "q_0f978621dc59",
+      "queryText": "What are the best outsourced accounting services for UK accounting firms?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_81564228daf9",
+      "queryText": "Which accounting outsourcing companies specialize in supporting UK accountancy practices?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_ba7c1ff40c25",
+      "queryText": "Can I outsource bookkeeping, payroll, VAT returns and year-end accounts to one provider?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    }
+  ],
+  "trialsPerJourney": 5
+}

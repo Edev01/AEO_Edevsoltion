@@ -1,0 +1,788 @@
+﻿"use client";
+
+import { useMemo, useState } from "react";
+import { ActionExperimentPanel } from "@/components/dashboard/action-experiment-panel";
+import type {
+  AuditReport,
+  ScrapeRun,
+  SeroqActionAddressability,
+  SeroqActionItem,
+  SeroqActionPriority,
+  SeroqActionStatus,
+} from "@/components/dashboard/types";
+
+type Props = {
+  actions: SeroqActionItem[];
+  runs: ScrapeRun[];
+  auditReport: AuditReport | null;
+  brandWebsites: string[];
+  onActionsChange: (actions: SeroqActionItem[]) => void;
+};
+
+function makeId(): string {
+  return `act_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function nowIso(): string {
+  return new Date().toISOString();
+}
+
+function normalizeDomain(value: string): string {
+  try {
+    const url = new URL(value);
+    return url.hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return value
+      .toLowerCase()
+      .replace(/^https?:\/\//, "")
+      .split("/")[0]
+      .replace(/^www\./, "");
+  }
+}
+
+function uniq(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))];
+}
+
+function fingerprint(
+  action: Pick<SeroqActionItem, "sourceKey" | "title">,
+): string {
+  return action.sourceKey || action.title.toLowerCase().trim();
+}
+
+function buildCandidate(args: {
+  sourceKey: string;
+  title: string;
+  rationale: string;
+  evidenceClass: SeroqActionItem["evidenceClass"];
+  evidenceRefs: string[];
+  priority: SeroqActionPriority;
+  addressability: SeroqActionAddressability;
+  journey?: string;
+  competitor?: string;
+}): SeroqActionItem {
+  const timestamp = nowIso();
+
+  return {
+    id: makeId(),
+    sourceKey: args.sourceKey,
+    title: args.title,
+    rationale: args.rationale,
+    journey: args.journey,
+    competitor: args.competitor,
+    evidenceClass: args.evidenceClass,
+    evidenceRefs: uniq(args.evidenceRefs),
+    addressability: args.addressability,
+    priority: args.priority,
+    status: "new",
+    notes: "",
+    baselineRunIds: [],
+    remeasurementRunIds: [],
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
+/**
+ * Conservative deterministic candidate generator.
+ *
+ * Candidates may be created from:
+ * - failed deterministic site checks (VERIFIED)
+ * - recurring competitor patterns in captured model answers (OBSERVED)
+ * - recurring source domains in competitor-present / brand-absent observations
+ *
+ * Recurrence is never treated as proof of causation.
+ */
+function deriveCandidates(
+  runs: ScrapeRun[],
+  auditReport: AuditReport | null,
+  brandWebsites: string[],
+): SeroqActionItem[] {
+  const candidates: SeroqActionItem[] = [];
+
+  for (const check of auditReport?.checks ?? []) {
+    if (check.pass) continue;
+
+    candidates.push(
+      buildCandidate({
+        sourceKey: `audit:${check.id}`,
+        title: `Fix deterministic AEO check: ${check.label}`,
+        rationale:
+          `The current site audit failed "${check.label}". ` +
+          `${check.detail || check.value}. This is a VERIFIED site finding, ` +
+          "not evidence by itself that an AI system will change its recommendation.",
+        evidenceClass: "VERIFIED",
+        evidenceRefs: [
+          `audit:${auditReport?.url ?? "unknown"}`,
+          `check:${check.id}`,
+        ],
+        priority:
+          check.category === "technical" || check.category === "discovery"
+            ? "P1"
+            : "P2",
+        addressability: "HIGH",
+      }),
+    );
+  }
+
+  const byPrompt = new Map<string, ScrapeRun[]>();
+
+  for (const run of runs) {
+    const prompt = run.prompt?.trim();
+    if (!prompt) continue;
+
+    const bucket = byPrompt.get(prompt) ?? [];
+    bucket.push(run);
+    byPrompt.set(prompt, bucket);
+  }
+
+  for (const [prompt, promptRuns] of byPrompt.entries()) {
+    if (promptRuns.length < 2) continue;
+
+    const brandSeen = promptRuns.filter(
+      (run) => (run.brandMentions?.length ?? 0) > 0,
+    ).length;
+
+    const competitorCounts = new Map<string, number>();
+
+    for (const run of promptRuns) {
+      for (const name of uniq(run.competitorMentions ?? [])) {
+        competitorCounts.set(name, (competitorCounts.get(name) ?? 0) + 1);
+      }
+    }
+
+    const recurring = [...competitorCounts.entries()]
+      .filter(([, count]) => count >= 2)
+      .sort((a, b) => b[1] - a[1]);
+
+    if (brandSeen === 0 && recurring.length > 0) {
+      const [topCompetitor, count] = recurring[0];
+
+      candidates.push(
+        buildCandidate({
+          sourceKey: `journey-loss:${prompt.toLowerCase()}`,
+          title: `Investigate recurring competitor selection: ${topCompetitor}`,
+          rationale:
+            `Across ${promptRuns.length} captured answers for this buyer journey, ` +
+            `your brand was not mentioned while ${topCompetitor} appeared in ${count}. ` +
+            "This is an OBSERVED recurrence and should trigger a WHY investigation. " +
+            "It is not proof that any specific competitor page, source, or tactic caused the outcome.",
+          evidenceClass: "OBSERVED",
+          evidenceRefs: promptRuns.map(
+            (run) =>
+              `run:${run.provider}:${run.createdAt}:${run.prompt.slice(0, 80)}`,
+          ),
+          priority: count >= 3 ? "P1" : "P2",
+          addressability: "UNKNOWN",
+          journey: prompt,
+          competitor: topCompetitor,
+        }),
+      );
+    }
+  }
+
+  const ownDomains = new Set(
+    brandWebsites.map(normalizeDomain).filter(Boolean),
+  );
+
+  const sourceLossCounts = new Map<
+    string,
+    { count: number; refs: string[] }
+  >();
+
+  for (const run of runs) {
+    const lossObservation =
+      (run.brandMentions?.length ?? 0) === 0 &&
+      (run.competitorMentions?.length ?? 0) > 0;
+
+    if (!lossObservation) continue;
+
+    for (const source of uniq(run.sources ?? [])) {
+      const domain = normalizeDomain(source);
+      if (!domain || ownDomains.has(domain)) continue;
+
+      const existing = sourceLossCounts.get(domain) ?? {
+        count: 0,
+        refs: [],
+      };
+
+      existing.count += 1;
+      existing.refs.push(
+        `source:${source}|run:${run.provider}:${run.createdAt}`,
+      );
+
+      sourceLossCounts.set(domain, existing);
+    }
+  }
+
+  for (const [domain, info] of [...sourceLossCounts.entries()]
+    .filter(([, value]) => value.count >= 2)
+    .sort((a, b) => b[1].count - a[1].count)
+    .slice(0, 10)) {
+    candidates.push(
+      buildCandidate({
+        sourceKey: `loss-source:${domain}`,
+        title: `Review recurring source domain in loss observations: ${domain}`,
+        rationale:
+          `${domain} was captured ${info.count} times in observations where competitors were present and your brand was absent. ` +
+          "Treat this as an OBSERVED source pattern worth investigating for citation/entity opportunities. " +
+          "The recurrence does not establish that the source caused the model outcome.",
+        evidenceClass: "OBSERVED",
+        evidenceRefs: info.refs,
+        priority: info.count >= 4 ? "P1" : "P2",
+        addressability: "MEDIUM",
+      }),
+    );
+  }
+
+  return candidates;
+}
+
+const statusOrder: SeroqActionStatus[] = [
+  "new",
+  "in_progress",
+  "on_hold",
+  "completed",
+  "dismissed",
+];
+
+function statusLabel(status: SeroqActionStatus): string {
+  if (status === "new") return "NEW";
+  if (status === "in_progress") return "IN PROGRESS";
+  if (status === "on_hold") return "ON HOLD";
+  if (status === "completed") return "COMPLETED";
+  return "DISMISSED";
+}
+
+function statusClasses(status: SeroqActionStatus): string {
+  if (status === "completed") {
+    return "bg-th-success-soft text-th-success";
+  }
+  if (status === "dismissed") {
+    return "bg-th-danger-soft text-th-danger";
+  }
+  if (status === "in_progress") {
+    return "bg-th-accent-soft text-th-text-accent";
+  }
+  if (status === "on_hold") {
+    return "bg-th-card-hover text-th-text-secondary";
+  }
+  return "bg-th-card-alt text-th-text-muted";
+}
+
+function evidenceClasses(
+  value: SeroqActionItem["evidenceClass"],
+): string {
+  if (value === "VERIFIED") {
+    return "bg-th-success-soft text-th-success";
+  }
+  if (value === "OBSERVED") {
+    return "bg-th-accent-soft text-th-text-accent";
+  }
+  if (value === "INFERRED") {
+    return "bg-th-card-hover text-th-text-secondary";
+  }
+  return "bg-th-card-alt text-th-text-muted";
+}
+
+function priorityClasses(priority: SeroqActionPriority): string {
+  if (priority === "P0") {
+    return "bg-th-danger-soft text-th-danger";
+  }
+  if (priority === "P1") {
+    return "bg-th-accent-soft text-th-text-accent";
+  }
+  return "bg-th-card-alt text-th-text-muted";
+}
+
+export function ActionCenterTab({
+  actions,
+  runs,
+  auditReport,
+  brandWebsites,
+  onActionsChange,
+}: Props) {
+  const [filter, setFilter] = useState<SeroqActionStatus | "all">("all");
+
+  const visible = useMemo(() => {
+    return [...actions]
+      .filter((action) => filter === "all" || action.status === filter)
+      .sort((a, b) => {
+        const priorityA = Number(a.priority.slice(1));
+        const priorityB = Number(b.priority.slice(1));
+
+        if (priorityA !== priorityB) {
+          return priorityA - priorityB;
+        }
+
+        return b.updatedAt.localeCompare(a.updatedAt);
+      });
+  }, [actions, filter]);
+
+  const counts = useMemo(() => {
+    const map = new Map<SeroqActionStatus, number>();
+
+    for (const status of statusOrder) {
+      map.set(status, 0);
+    }
+
+    for (const action of actions) {
+      map.set(action.status, (map.get(action.status) ?? 0) + 1);
+    }
+
+    return map;
+  }, [actions]);
+
+  function patchAction(
+    id: string,
+    patch: Partial<SeroqActionItem>,
+  ): void {
+    onActionsChange(
+      actions.map((action) =>
+        action.id === id
+          ? { ...action, ...patch, updatedAt: nowIso() }
+          : action,
+      ),
+    );
+  }
+
+  function generateCandidates(): void {
+    const candidates = deriveCandidates(
+      runs,
+      auditReport,
+      brandWebsites,
+    );
+
+    const existing = new Set(actions.map(fingerprint));
+
+    const newOnes = candidates.filter(
+      (candidate) => !existing.has(fingerprint(candidate)),
+    );
+
+    if (newOnes.length > 0) {
+      onActionsChange([...actions, ...newOnes]);
+    }
+  }
+
+  /**
+   * Approval is deliberately independent of status because the existing
+   * Seroq lifecycle has no "approved" status. A newly generated action stays
+   * status=new until a human approves it. approvedAt is the gate.
+   */
+  function approve(action: SeroqActionItem): void {
+    if (action.status !== "new") return;
+
+    const approvedAt = nowIso();
+
+    const baselineRunIds = action.journey
+      ? runs
+          .filter(
+            (run) =>
+              run.prompt.trim() === action.journey?.trim() &&
+              Date.parse(run.createdAt) <= Date.parse(approvedAt),
+          )
+          .map(
+            (run) =>
+              `${run.provider}|${run.createdAt}|${run.prompt}`,
+          )
+      : action.baselineRunIds;
+
+    patchAction(action.id, {
+      approvedAt,
+      baselineRunIds,
+      remeasurementRunIds: [],
+    });
+  }
+
+  function start(action: SeroqActionItem): void {
+    if (action.status !== "new" || !action.approvedAt) return;
+
+    patchAction(action.id, {
+      status: "in_progress",
+    });
+  }
+
+  function pause(action: SeroqActionItem): void {
+    if (action.status !== "in_progress") return;
+
+    patchAction(action.id, {
+      status: "on_hold",
+    });
+  }
+
+  function resume(action: SeroqActionItem): void {
+    if (action.status !== "on_hold") return;
+
+    patchAction(action.id, {
+      status: "in_progress",
+    });
+  }
+
+  function complete(action: SeroqActionItem): void {
+    if (
+      action.status !== "in_progress" &&
+      action.status !== "on_hold"
+    ) {
+      return;
+    }
+
+    patchAction(action.id, {
+      status: "completed",
+      completedAt: nowIso(),
+    });
+  }
+
+  function dismiss(action: SeroqActionItem): void {
+    patchAction(action.id, {
+      status: "dismissed",
+    });
+  }
+
+  function reopen(action: SeroqActionItem): void {
+    patchAction(action.id, {
+      status: "new",
+      approvedAt: undefined,
+      completedAt: undefined,
+    });
+  }
+
+  const awaitingApproval = actions.filter(
+    (action) => action.status === "new" && !action.approvedAt,
+  ).length;
+
+  const approvedNotStarted = actions.filter(
+    (action) => action.status === "new" && Boolean(action.approvedAt),
+  ).length;
+
+  const active =
+    approvedNotStarted +
+    (counts.get("in_progress") ?? 0) +
+    (counts.get("on_hold") ?? 0);
+
+  const completed = counts.get("completed") ?? 0;
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-th-text">
+            Seroq Action Center
+          </h2>
+
+          <p className="mt-1 max-w-3xl text-sm leading-relaxed text-th-text-secondary">
+            Turn measured evidence into controlled interventions. New
+            candidates remain status=new until a human explicitly approves
+            them. Approval is recorded separately from workflow status so the
+            existing Seroq lifecycle remains intact. Observed recurrence is
+            never presented as causal proof.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={generateCandidates}
+          className="rounded-lg bg-th-accent px-3.5 py-2 text-sm font-semibold text-th-text-inverse hover:opacity-90"
+        >
+          Generate evidence-backed candidates
+        </button>
+      </div>
+
+      <div className="grid gap-2 sm:grid-cols-3">
+        <div className="rounded-lg border border-th-border bg-th-card-alt p-3">
+          <div className="text-xs uppercase tracking-wider text-th-text-muted">
+            Awaiting approval
+          </div>
+          <div className="mt-1 text-2xl font-semibold text-th-text">
+            {awaitingApproval}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-th-border bg-th-card-alt p-3">
+          <div className="text-xs uppercase tracking-wider text-th-text-muted">
+            Approved / active
+          </div>
+          <div className="mt-1 text-2xl font-semibold text-th-text">
+            {active}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-th-border bg-th-card-alt p-3">
+          <div className="text-xs uppercase tracking-wider text-th-text-muted">
+            Completed
+          </div>
+          <div className="mt-1 text-2xl font-semibold text-th-text">
+            {completed}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-xs font-medium uppercase tracking-wider text-th-text-muted">
+          Filter
+        </span>
+
+        {(["all", ...statusOrder] as const).map((status) => {
+          const selected = filter === status;
+          const count =
+            status === "all"
+              ? actions.length
+              : (counts.get(status) ?? 0);
+
+          return (
+            <button
+              key={status}
+              type="button"
+              onClick={() => setFilter(status)}
+              className={`rounded-md border px-2.5 py-1 text-xs font-medium ${
+                selected
+                  ? "border-th-accent bg-th-accent-soft text-th-text-accent"
+                  : "border-th-border bg-th-card-alt text-th-text-muted hover:bg-th-card-hover"
+              }`}
+            >
+              {status === "all" ? "ALL" : statusLabel(status)} Â· {count}
+            </button>
+          );
+        })}
+      </div>
+
+      {visible.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-th-border bg-th-card-alt p-8 text-center">
+          <div className="text-sm font-medium text-th-text">
+            No actions in this view
+          </div>
+
+          <p className="mt-1 text-sm text-th-text-muted">
+            Generate candidates from the current evidence, or change the
+            filter.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {visible.map((action) => {
+            const awaitingHumanApproval =
+              action.status === "new" && !action.approvedAt;
+
+            const approvedAndReady =
+              action.status === "new" && Boolean(action.approvedAt);
+
+            return (
+              <article
+                key={action.id}
+                className="rounded-xl border border-th-border bg-th-card-alt p-4"
+              >
+                <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded-md px-2 py-1 text-[11px] font-semibold ${priorityClasses(action.priority)}`}
+                      >
+                        {action.priority}
+                      </span>
+
+                      <span
+                        className={`rounded-md px-2 py-1 text-[11px] font-semibold ${evidenceClasses(action.evidenceClass)}`}
+                      >
+                        {action.evidenceClass}
+                      </span>
+
+                      <span
+                        className={`rounded-md px-2 py-1 text-[11px] font-semibold ${statusClasses(action.status)}`}
+                      >
+                        {statusLabel(action.status)}
+                      </span>
+
+                      {awaitingHumanApproval && (
+                        <span className="rounded-md bg-th-card px-2 py-1 text-[11px] text-th-text-muted">
+                          HUMAN APPROVAL REQUIRED
+                        </span>
+                      )}
+
+                      {approvedAndReady && (
+                        <span className="rounded-md bg-th-success-soft px-2 py-1 text-[11px] font-semibold text-th-success">
+                          APPROVED Â· READY TO START
+                        </span>
+                      )}
+
+                      <span className="rounded-md bg-th-card px-2 py-1 text-[11px] text-th-text-muted">
+                        Addressability: {action.addressability}
+                      </span>
+                    </div>
+
+                    <h3 className="mt-3 text-base font-semibold text-th-text">
+                      {action.title}
+                    </h3>
+
+                    <p className="mt-2 max-w-4xl text-sm leading-relaxed text-th-text-secondary">
+                      {action.rationale}
+                    </p>
+
+                    {action.journey && (
+                      <div className="mt-3 rounded-lg border border-th-border bg-th-card p-3">
+                        <div className="text-[11px] font-medium uppercase tracking-wider text-th-text-muted">
+                          Buyer journey
+                        </div>
+                        <div className="mt-1 text-sm text-th-text-secondary">
+                          {action.journey}
+                        </div>
+                      </div>
+                    )}
+
+                    <details className="mt-3">
+                      <summary className="cursor-pointer text-xs font-medium text-th-text-accent">
+                        Evidence references ({action.evidenceRefs.length})
+                      </summary>
+
+                      <div className="mt-2 max-h-40 overflow-auto rounded-lg border border-th-border bg-th-card p-3">
+                        {action.evidenceRefs.length === 0 ? (
+                          <div className="text-xs text-th-text-muted">
+                            No evidence references recorded.
+                          </div>
+                        ) : (
+                          <ul className="space-y-1">
+                            {action.evidenceRefs.map((ref) => (
+                              <li
+                                key={ref}
+                                className="break-all font-mono text-[11px] text-th-text-muted"
+                              >
+                                {ref}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    </details>
+
+                    <div className="mt-3">
+                      <label className="text-[11px] font-medium uppercase tracking-wider text-th-text-muted">
+                        Human notes
+                      </label>
+
+                      <textarea
+                        value={action.notes ?? ""}
+                        onChange={(event) =>
+                          patchAction(action.id, {
+                            notes: event.target.value,
+                          })
+                        }
+                        rows={2}
+                        placeholder="Implementation notes, owner, hypothesis, constraints..."
+                        className="mt-1 w-full rounded-lg border border-th-border bg-th-card px-3 py-2 text-sm text-th-text outline-none focus:border-th-accent"
+                      />
+                    </div>
+                    <ActionExperimentPanel
+                      action={action}
+                      runs={runs}
+                      onChange={(patch) => patchAction(action.id, patch)}
+                    />
+                  </div>
+
+                  <div className="flex shrink-0 flex-wrap gap-2 xl:max-w-[300px] xl:justify-end">
+                    {awaitingHumanApproval && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => approve(action)}
+                          className="rounded-md bg-th-accent px-3 py-1.5 text-xs font-semibold text-th-text-inverse"
+                        >
+                          Approve
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => dismiss(action)}
+                          className="rounded-md border border-th-border px-3 py-1.5 text-xs font-medium text-th-text-muted hover:bg-th-card-hover"
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    )}
+
+                    {approvedAndReady && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => start(action)}
+                          className="rounded-md bg-th-accent px-3 py-1.5 text-xs font-semibold text-th-text-inverse"
+                        >
+                          Start work
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => dismiss(action)}
+                          className="rounded-md border border-th-border px-3 py-1.5 text-xs font-medium text-th-text-muted hover:bg-th-card-hover"
+                        >
+                          Dismiss
+                        </button>
+                      </>
+                    )}
+
+                    {action.status === "in_progress" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => pause(action)}
+                          className="rounded-md border border-th-border px-3 py-1.5 text-xs font-medium text-th-text-muted hover:bg-th-card-hover"
+                        >
+                          Put on hold
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => complete(action)}
+                          className="rounded-md bg-th-accent px-3 py-1.5 text-xs font-semibold text-th-text-inverse"
+                        >
+                          Mark completed
+                        </button>
+                      </>
+                    )}
+
+                    {action.status === "on_hold" && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => resume(action)}
+                          className="rounded-md bg-th-accent px-3 py-1.5 text-xs font-semibold text-th-text-inverse"
+                        >
+                          Resume
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => complete(action)}
+                          className="rounded-md border border-th-border px-3 py-1.5 text-xs font-medium text-th-text-muted hover:bg-th-card-hover"
+                        >
+                          Mark completed
+                        </button>
+                      </>
+                    )}
+
+                    {(action.status === "completed" ||
+                      action.status === "dismissed") && (
+                      <button
+                        type="button"
+                        onClick={() => reopen(action)}
+                        className="rounded-md border border-th-border px-3 py-1.5 text-xs font-medium text-th-text-muted hover:bg-th-card-hover"
+                      >
+                        Reopen
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </article>
+            );
+          })}
+        </div>
+      )}
+
+      <div className="rounded-lg border border-th-border bg-th-card-alt p-3 text-xs leading-relaxed text-th-text-muted">
+        Action state remains inside the existing Seroq workspace AppState.
+        Newly generated actions use the native status "new". Human approval is
+        recorded in approvedAt before an action can move to "in_progress".
+        This preserves the pre-existing Seroq status contract while maintaining
+        a strict approval gate.
+      </div>
+    </div>
+  );
+}
+

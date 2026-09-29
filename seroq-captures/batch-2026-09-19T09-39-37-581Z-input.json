@@ -1,0 +1,30 @@
+{
+  "targetBrand": "MailerLite",
+  "prompts": [
+    {
+      "queryId": "q_770fd1f2ffb3",
+      "queryText": "What are the best email marketing platforms for a small business?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_503ef2ab3036",
+      "queryText": "Which email marketing tool is easiest to use for a beginner?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_282e1231915b",
+      "queryText": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    }
+  ],
+  "trialsPerJourney": 5
+}

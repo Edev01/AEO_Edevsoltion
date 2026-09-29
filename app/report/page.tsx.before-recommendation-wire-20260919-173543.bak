@@ -1,0 +1,1540 @@
+﻿"use client";
+
+import {
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
+import type {
+  AppState,
+} from "@/components/dashboard/types";
+
+import {
+  loadSovereignValue,
+} from "@/lib/client/sovereign-store";
+
+import {
+  ReportIntelligenceV2,
+} from "@/components/seroq/report-intelligence-v2";
+
+
+type Trial = {
+  capturedAt: string;
+  targetMentioned: boolean;
+  response: string;
+  sources: unknown[];
+};
+
+
+type JourneyResult = {
+  queryId: string;
+  queryText: string;
+  tags: string[];
+
+  status:
+    "OBSERVED" |
+    "UNKNOWN";
+
+  validTrials: number;
+  failedTrials: number;
+
+  presence: {
+    hits: number;
+    n: number;
+    rate: number;
+
+    confidenceInterval: {
+      low: number;
+      high: number;
+    };
+  } | null;
+
+  trials: Trial[];
+};
+
+
+type BatchReport = {
+  generatedAt: string;
+
+  targetBrand: string;
+
+  instrument?: string;
+  sessionStrategy?: string;
+
+  samplesPerJourney: number;
+
+  providerCount?: number;
+  attemptedProviderCount?: number;
+  unknownObservations?: number;
+
+  basket: Array<{
+    queryId: string;
+    queryText: string;
+    tags: string[];
+  }>;
+
+  results: JourneyResult[];
+
+  overall: {
+    status:
+      "OBSERVED" |
+      "UNKNOWN";
+
+    hits: number;
+    n: number;
+
+    rate:
+      number | null;
+
+    confidenceInterval: {
+      low: number;
+      high: number;
+    } | null;
+  };
+
+  failedJourneyCount: number;
+};
+
+
+function pct(
+  value:
+    number | null |
+    undefined,
+) {
+
+  if (
+    value ===
+      null ||
+    value ===
+      undefined
+  ) {
+    return "UNKNOWN";
+  }
+
+  return `${(
+    value * 100
+  ).toFixed(1)}%`;
+
+}
+
+
+function cleanText(
+  value: string,
+) {
+
+  return value
+    .replace(/\s+/g, " ")
+    .trim();
+
+}
+
+
+function excerpt(
+  value: string,
+  max = 650,
+) {
+
+  const clean =
+    cleanText(
+      value,
+    );
+
+  if (
+    clean.length <=
+    max
+  ) {
+    return clean;
+  }
+
+  return `${clean.slice(0, max)}…`;
+
+}
+
+
+function hostname(
+  value: string,
+) {
+
+  try {
+
+    return new URL(
+      value,
+    ).hostname.replace(
+      /^www\./,
+      "",
+    );
+
+  }
+  catch {
+
+    return value;
+
+  }
+
+}
+
+
+export default function ReportPage() {
+
+  useEffect(() => {
+
+    const previousOverflow =
+      document.body.style.overflow;
+
+    const previousHtmlOverflow =
+      document.documentElement.style.overflow;
+
+    document.body.style.overflow =
+      "auto";
+
+    document.documentElement.style.overflow =
+      "auto";
+
+    return () => {
+
+      document.body.style.overflow =
+        previousOverflow;
+
+      document.documentElement.style.overflow =
+        previousHtmlOverflow;
+
+    };
+
+  }, []);
+
+  const [
+    state,
+    setState,
+  ] =
+    useState<AppState | null>(
+      null,
+    );
+
+
+  const [
+    report,
+    setReport,
+  ] =
+    useState<BatchReport | null>(
+      null,
+    );
+
+
+  const [
+    error,
+    setError,
+  ] =
+    useState<string | null>(
+      null,
+    );
+
+
+  useEffect(
+    () => {
+
+      let alive =
+        true;
+
+
+      void (
+        async () => {
+
+          const wsId =
+            window.localStorage.getItem(
+              "sovereign-active-workspace",
+            ) ??
+            "default";
+
+
+          const storageKey =
+            wsId ===
+            "default"
+              ? "sovereign-aeo-tracker-v1"
+              : `sovereign-aeo-tracker-${wsId}`;
+
+
+          const loaded =
+            await loadSovereignValue<AppState | null>(
+              storageKey,
+              null,
+            );
+
+
+          if (
+            !alive
+          ) {
+            return;
+          }
+
+
+          if (
+            !loaded?.brand
+              ?.brandName
+          ) {
+
+            setError(
+              "No active Seroq customer workspace was found.",
+            );
+
+            return;
+          }
+
+
+          setState(
+            loaded,
+          );
+
+
+          const response =
+            await fetch(
+              `/api/seroq/report/latest?brand=${encodeURIComponent(
+                loaded.brand.brandName,
+              )}`,
+              {
+                cache:
+                  "no-store",
+              },
+            );
+
+
+          const data =
+            await response.json();
+
+
+          if (
+            !response.ok ||
+            !data.ok
+          ) {
+
+            throw new Error(
+              data.error ??
+              "No audit report is available yet.",
+            );
+
+          }
+
+
+          if (
+            alive
+          ) {
+
+            setReport(
+              data.report,
+            );
+
+          }
+
+        }
+      )().catch(
+        (
+          caught,
+        ) => {
+
+          if (
+            alive
+          ) {
+
+            setError(
+              caught instanceof Error
+                ? caught.message
+                : String(
+                    caught,
+                  ),
+            );
+
+          }
+
+        },
+      );
+
+
+      return () => {
+
+        alive =
+          false;
+
+      };
+
+    },
+    [],
+  );
+
+
+  const strongest =
+    useMemo(
+      () => {
+
+        if (
+          !report
+        ) {
+          return [];
+        }
+
+
+        return [
+          ...report.results,
+        ]
+          .filter(
+            (
+              result,
+            ) =>
+              result.presence !==
+              null,
+          )
+          .sort(
+            (
+              a,
+              b,
+            ) =>
+              (
+                b.presence?.rate ??
+                -1
+              ) -
+              (
+                a.presence?.rate ??
+                -1
+              ),
+          )
+          .slice(
+            0,
+            3,
+          );
+
+      },
+      [
+        report,
+      ],
+    );
+
+
+  const weakest =
+    useMemo(
+      () => {
+
+        if (
+          !report
+        ) {
+          return [];
+        }
+
+
+        return [
+          ...report.results,
+        ]
+          .filter(
+            (
+              result,
+            ) =>
+              result.presence !==
+              null,
+          )
+          .sort(
+            (
+              a,
+              b,
+            ) =>
+              (
+                a.presence?.rate ??
+                2
+              ) -
+              (
+                b.presence?.rate ??
+                2
+              ),
+          )
+          .slice(
+            0,
+            3,
+          );
+
+      },
+      [
+        report,
+      ],
+    );
+
+
+  if (
+    error
+  ) {
+
+    return (
+      <main className="min-h-screen bg-[#080a0c] p-8 text-zinc-100">
+
+        <div className="mx-auto max-w-3xl rounded-2xl border border-red-300/20 bg-red-300/[0.04] p-6">
+          {error}
+        </div>
+
+      </main>
+    );
+
+  }
+
+
+  if (
+    !state ||
+    !report
+  ) {
+
+    return (
+      <main className="min-h-screen bg-[#080a0c] p-8 text-zinc-100">
+
+        <div className="mx-auto max-w-3xl text-sm text-zinc-500">
+          Building Seroq client report…
+        </div>
+
+      </main>
+    );
+
+  }
+
+
+  const website =
+    state.brand.websites[0] ??
+    "";
+
+
+  const observedJourneys =
+    report.results.filter(
+      (
+        result,
+      ) =>
+        result.status ===
+        "OBSERVED",
+    ).length;
+
+
+  const zeroPresence =
+    report.results.filter(
+      (
+        result,
+      ) =>
+        result.presence?.rate ===
+        0,
+    );
+
+
+  const mixedPresence =
+    report.results.filter(
+      (
+        result,
+      ) =>
+        result.presence &&
+        result.presence.rate >
+          0 &&
+        result.presence.rate <
+          1,
+    );
+
+
+  // SEROQ_INTEGRITY_V21
+  const plannedObservations =
+    report.results.length *
+    report.samplesPerJourney *
+    Math.max(
+      report.attemptedProviderCount ??
+      report.providerCount ??
+      1,
+      1,
+    );
+
+
+  const measurementCoverage =
+    plannedObservations > 0
+      ? report.overall.n /
+        plannedObservations
+      : null;
+
+
+  const unmeasuredObservations =
+    Math.max(
+      0,
+      plannedObservations -
+      report.overall.n,
+    );
+
+  return (
+    <main className="min-h-screen bg-[#080a0c] px-5 py-8 text-zinc-100 print:bg-white print:px-0 print:py-0 print:text-black">
+
+      <style jsx global>{`
+        @media print {
+          nav,
+          .no-print {
+            display: none !important;
+          }
+
+          body {
+            background: white !important;
+          }
+
+          .report-card {
+            break-inside: avoid;
+            border-color: #dddddd !important;
+            background: white !important;
+          }
+
+          .report-section {
+            break-inside: avoid;
+          }
+        }
+      `}</style>
+
+
+      <div className="no-print fixed bottom-6 right-6 z-50 flex gap-2">
+
+        <a
+          href="/dashboard"
+          className="rounded-xl border border-white/10 bg-[#11161a] px-4 py-2.5 text-sm text-zinc-300"
+        >
+          Dashboard
+        </a>
+
+        <button
+          type="button"
+          onClick={
+            () =>
+              window.print()
+          }
+          className="rounded-xl border border-emerald-300/20 bg-emerald-300/10 px-4 py-2.5 text-sm font-medium text-emerald-100"
+        >
+          Save / Print PDF
+        </button>
+
+      </div>
+
+
+      <article className="mx-auto max-w-5xl">
+
+        {/* ===================================================== */}
+        {/* COVER */}
+        {/* ===================================================== */}
+
+        <header className="report-section border-b border-white/10 pb-10 print:border-zinc-300">
+
+          <div className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-300 print:text-black">
+            SEROQ
+          </div>
+
+          <h1 className="mt-5 max-w-4xl text-4xl font-semibold tracking-tight sm:text-6xl">
+            AI Search Visibility Report
+          </h1>
+
+          <div className="mt-7 grid gap-5 sm:grid-cols-2">
+
+            <div>
+
+              <div className="text-xs uppercase tracking-[0.15em] text-zinc-600">
+                Brand
+              </div>
+
+              <div className="mt-1 text-xl font-medium">
+                {
+                  state.brand.brandName
+                }
+              </div>
+
+              <div className="mt-1 text-sm text-zinc-500">
+                {
+                  hostname(
+                    website,
+                  )
+                }
+              </div>
+
+            </div>
+
+
+            <div>
+
+              <div className="text-xs uppercase tracking-[0.15em] text-zinc-600">
+                Measurement date
+              </div>
+
+              <div className="mt-1 text-xl font-medium">
+                {
+                  new Date(
+                    report.generatedAt,
+                  ).toLocaleDateString()
+                }
+              </div>
+
+              <div className="mt-1 text-sm text-zinc-500">
+                Point-in-time AI search measurement
+              </div>
+
+            </div>
+
+          </div>
+
+
+          <div className="mt-10 text-xl leading-8 text-zinc-300 print:text-zinc-800">
+            Be the brand they find. Become the brand they choose.
+          </div>
+
+        </header>
+
+
+
+        {/* ===================================================== */}
+        {/* EXECUTIVE SUMMARY */}
+        {/* ===================================================== */}
+
+        <section className="report-section py-10">
+
+          <Overline>
+            Executive Summary
+          </Overline>
+
+          <h2 className="mt-3 text-3xl font-semibold">
+            How often is the brand mentioned when buyers ask AI for help?
+          </h2>
+
+
+          <div className="mt-7 grid gap-px overflow-hidden rounded-2xl bg-white/10 sm:grid-cols-4 print:border print:border-zinc-300">
+
+            <Metric
+              label="Observed mentions"
+              value={
+                `${report.overall.hits}/${report.overall.n}`
+              }
+            />
+
+            <Metric
+              label="Mention rate (valid only)"
+              value={
+                pct(
+                  report.overall.rate,
+                )
+              }
+            />
+
+            <Metric
+              label="Buyer journeys"
+              value={
+                String(
+                  observedJourneys,
+                )
+              }
+            />
+
+            <Metric
+              label="Measurement coverage"
+              value={
+                pct(
+                  measurementCoverage,
+                )
+              }
+            />
+
+          </div>
+
+
+          <div className="report-card mt-5 rounded-2xl border border-white/10 bg-white/[0.02] p-5">
+
+            <div className="text-xs font-semibold uppercase tracking-[0.15em] text-zinc-500">
+              Confidence
+            </div>
+
+            <p className="mt-2 text-sm leading-6 text-zinc-300 print:text-zinc-800">
+
+              {
+                report.overall
+                  .confidenceInterval
+                  ? (
+                    <>
+                      Across {
+                        report.overall.n
+                      } valid observations, the observed mention rate among valid observations was{" "}
+                      <strong>
+                        {
+                          pct(
+                            report.overall.rate,
+                          )
+                        }
+                      </strong>
+                      , with a 95% Wilson interval of{" "}
+                      <strong>
+                        {
+                          pct(
+                            report.overall
+                              .confidenceInterval
+                              .low,
+                          )
+                        }
+                        {" – "}
+                        {
+                          pct(
+                            report.overall
+                              .confidenceInterval
+                              .high,
+                          )
+                        }
+                      </strong>.
+                    </>
+                  )
+                  : "The current audit did not produce enough valid observations for an interval."
+              }
+
+            </p>
+
+            <p className="mt-3 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+              The planned measurement grid contained{" "}
+              <strong>{plannedObservations}</strong>{" "}
+              observations.{" "}
+              <strong>{report.overall.n}</strong>{" "}
+              completed ({pct(measurementCoverage)} coverage), leaving{" "}
+              <strong>{unmeasuredObservations}</strong>{" "}
+              unmeasured. The Wilson interval above describes uncertainty among valid observations only; it does not account for missing observations or unequal engine completion.
+            </p>
+
+          </div>
+
+        </section>
+
+
+
+        {/* ===================================================== */}
+        {/* BUSINESS CONTEXT */}
+        {/* ===================================================== */}
+
+        <section className="report-section border-t border-white/10 py-10 print:border-zinc-300">
+
+          <Overline>
+            Business Context
+          </Overline>
+
+          <h2 className="mt-3 text-2xl font-semibold">
+            What Seroq understood from the public website
+          </h2>
+
+
+          <div className="report-card mt-6 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+
+            <div className="text-lg font-medium">
+              {
+                state.brand.industry ||
+                "Market not specified"
+              }
+            </div>
+
+            {
+              state.brand.description
+                ? (
+                  <p className="mt-3 text-sm leading-7 text-zinc-400 print:text-zinc-700">
+                    {
+                      state.brand.description
+                    }
+                  </p>
+                )
+                : null
+            }
+
+          </div>
+
+        </section>
+
+
+
+        {/* ===================================================== */}
+        {/* BUYER JOURNEY MATRIX */}
+        {/* ===================================================== */}
+
+        <section className="border-t border-white/10 py-10 print:border-zinc-300">
+
+          <Overline>
+            Buyer Journey Intelligence
+          </Overline>
+
+          <h2 className="mt-3 text-2xl font-semibold">
+            Questions that can win or lose a customer
+          </h2>
+
+
+          <div className="mt-6 overflow-hidden rounded-2xl border border-white/10 print:border-zinc-300">
+
+            <div className="grid grid-cols-[1fr_110px_110px] border-b border-white/10 bg-white/[0.03] px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-500 print:border-zinc-300">
+              <div>Buyer question</div>
+              <div>Mention</div>
+              <div>Status</div>
+            </div>
+
+
+            {
+              report.results.map(
+                (
+                  result,
+                ) => (
+
+                  <div
+                    key={
+                      result.queryId
+                    }
+                    className="grid grid-cols-[1fr_110px_110px] gap-3 border-b border-white/10 px-4 py-4 last:border-b-0 print:border-zinc-200"
+                  >
+
+                    <div>
+
+                      <div className="text-sm font-medium leading-6">
+                        {
+                          result.queryText
+                        }
+                      </div>
+
+                      <div className="mt-2 flex flex-wrap gap-1">
+
+                        {
+                          result.tags.map(
+                            (
+                              tag,
+                            ) => (
+
+                              <span
+                                key={
+                                  tag
+                                }
+                                className="rounded-full border border-white/10 px-2 py-0.5 text-[9px] uppercase tracking-wide text-zinc-500 print:border-zinc-300"
+                              >
+                                {tag}
+                              </span>
+
+                            ),
+                          )
+                        }
+
+                      </div>
+
+                    </div>
+
+
+                    <div className="text-sm font-semibold">
+
+                      {
+                        result.presence
+                          ? `${result.presence.hits}/${result.presence.n}`
+                          : "—"
+                      }
+
+                      {
+                        result.presence
+                          ? (
+                            <div className="mt-1 text-xs font-normal text-zinc-500">
+                              {
+                                pct(
+                                  result.presence.rate,
+                                )
+                              }
+                            </div>
+                          )
+                          : null
+                      }
+
+                    </div>
+
+
+                    <div className="text-xs">
+
+                      {
+                        result.status ===
+                        "OBSERVED"
+                          ? (
+                            <span className="font-semibold text-emerald-300 print:text-black">
+                              OBSERVED
+                            </span>
+                          )
+                          : (
+                            <span className="font-semibold text-amber-300 print:text-black">
+                              UNKNOWN
+                            </span>
+                          )
+                      }
+
+                    </div>
+
+                  </div>
+
+                ),
+              )
+            }
+
+          </div>
+
+        </section>
+
+
+
+        <ReportIntelligenceV2
+          state={state}
+          report={report}
+        />
+
+
+        {/* ===================================================== */}
+        {/* STRONG / WEAK */}
+        {/* ===================================================== */}
+
+        <section className={report.results.length >= 5 ? "border-t border-white/10 py-10 print:border-zinc-300" : "hidden"}>
+
+          <Overline>
+            Visibility Pattern
+          </Overline>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+
+            <div className="report-card rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+
+              <div className="text-sm font-semibold text-emerald-300 print:text-black">
+                Strongest measured journeys
+              </div>
+
+              <div className="mt-4 space-y-4">
+
+                {
+                  strongest.map(
+                    (
+                      item,
+                    ) => (
+
+                      <JourneyMini
+                        key={
+                          item.queryId
+                        }
+                        item={
+                          item
+                        }
+                      />
+
+                    ),
+                  )
+                }
+
+              </div>
+
+            </div>
+
+
+            <div className="report-card rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+
+              <div className="text-sm font-semibold text-amber-300 print:text-black">
+                Weakest measured journeys
+              </div>
+
+              <div className="mt-4 space-y-4">
+
+                {
+                  weakest.map(
+                    (
+                      item,
+                    ) => (
+
+                      <JourneyMini
+                        key={
+                          item.queryId
+                        }
+                        item={
+                          item
+                        }
+                      />
+
+                    ),
+                  )
+                }
+
+              </div>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+
+        {/* ===================================================== */}
+        {/* EVIDENCE */}
+        {/* ===================================================== */}
+
+        <section className="border-t border-white/10 py-10 print:border-zinc-300">
+
+          <Overline>
+            Evidence
+          </Overline>
+
+          <h2 className="mt-3 text-2xl font-semibold">
+            What the AI answer engine actually returned
+          </h2>
+
+
+          <div className="mt-6 space-y-5">
+
+            {
+              report.results.map(
+                (
+                  result,
+                ) => {
+
+                  const trial =
+                    result.trials[0];
+
+
+                  if (
+                    !trial
+                  ) {
+
+                    return (
+                      <div
+                        key={
+                          result.queryId
+                        }
+                        className="report-card rounded-2xl border border-white/10 p-5"
+                      >
+
+                        <div className="text-xs font-semibold text-amber-300 print:text-black">
+                          UNKNOWN
+                        </div>
+
+                        <div className="mt-2 text-sm">
+                          {
+                            result.queryText
+                          }
+                        </div>
+
+                      </div>
+                    );
+
+                  }
+
+
+                  return (
+                    <div
+                      key={
+                        result.queryId
+                      }
+                      className="report-card rounded-2xl border border-white/10 bg-white/[0.02] p-6"
+                    >
+
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+
+                        <div className="text-xs font-semibold uppercase tracking-[0.12em] text-emerald-300 print:text-black">
+                          OBSERVED RESPONSE
+                        </div>
+
+                        <div className="text-xs text-zinc-600">
+                          {
+                            result.presence?.hits ??
+                            0
+                          }
+                          /
+                          {
+                            result.presence?.n ??
+                            0
+                          } target mentions
+                        </div>
+
+                      </div>
+
+
+                      <div className="mt-3 text-sm font-medium">
+                        {
+                          result.queryText
+                        }
+                      </div>
+
+
+                      <p className="mt-4 text-sm leading-7 text-zinc-400 print:text-zinc-700">
+                        {
+                          excerpt(
+                            trial.response,
+                          )
+                        }
+                      </p>
+
+
+                      <div className="mt-4 text-xs text-zinc-600">
+                        Sources captured: {
+                          Array.isArray(
+                            trial.sources,
+                          )
+                            ? trial.sources.length
+                            : 0
+                        }
+                      </div>
+
+                    </div>
+                  );
+
+                },
+              )
+            }
+
+          </div>
+
+        </section>
+
+
+
+        {/* ===================================================== */}
+        {/* COMPETITOR CANDIDATES */}
+        {/* ===================================================== */}
+
+        <section className="border-t border-white/10 py-10 print:border-zinc-300">
+
+          <Overline>
+            Competitive Landscape
+          </Overline>
+
+          <h2 className="mt-3 text-2xl font-semibold">
+            Market-analysis candidate set
+          </h2>
+
+
+          <p className="mt-3 text-sm leading-6 text-zinc-500">
+            These names were inferred during onboarding and are retained as the comparison seed set. Measured recurrence from the actual AI answers is shown in the Measured Competitive Landscape section above.
+          </p>
+
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+
+            {
+              state.competitors.length >
+              0
+                ? state.competitors.map(
+                    (
+                      competitor,
+                    ) => (
+
+                      <div
+                        key={
+                          competitor.name
+                        }
+                        className="report-card rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+                      >
+
+                        <span className="mr-2 text-[9px] font-semibold uppercase tracking-wider text-amber-300 print:text-black">
+                          INFERRED
+                        </span>
+
+                        <span className="text-sm">
+                          {
+                            competitor.name
+                          }
+                        </span>
+
+                      </div>
+
+                    ),
+                  )
+                : (
+                  <div className="text-sm text-zinc-500">
+                    No competitor candidates recorded.
+                  </div>
+                )
+            }
+
+          </div>
+
+        </section>
+
+
+
+        {/* ===================================================== */}
+        {/* ACTION PLAN */}
+        {/* ===================================================== */}
+
+        <section className="border-t border-white/10 py-10 print:border-zinc-300">
+
+          <Overline>
+            What To Do Next
+          </Overline>
+
+          <h2 className="mt-3 text-2xl font-semibold">
+            30-day evidence-led plan
+          </h2>
+
+
+          <div className="mt-6 space-y-3">
+
+            {
+              zeroPresence.length >
+              0
+                ? (
+                  <Action
+                    number="01"
+                    title="Investigate the zero-presence buyer journeys"
+                    text={`${zeroPresence.length} measured buyer journey${zeroPresence.length === 1 ? "" : "s"} produced no target mention in the current sample. Inspect the brands and sources that repeatedly appear there before choosing an intervention.`}
+                  />
+                )
+                : (
+                  <Action
+                    number="01"
+                    title="Protect the visibility already observed"
+                    text="No measured journey in this sample had zero presence. Preserve the pages, claims and public proof supporting these buyer intents while expanding measurement into a broader query basket."
+                  />
+                )
+            }
+
+
+            {
+              mixedPresence.length >
+              0
+                ? (
+                  <Action
+                    number="02"
+                    title="Prioritize inconsistent buyer journeys"
+                    text={`${mixedPresence.length} buyer journey${mixedPresence.length === 1 ? "" : "s"} showed mixed presence across repeated trials. These are useful candidates for evidence analysis because visibility is present but not dependable.`}
+                  />
+                )
+                : (
+                  <Action
+                    number="02"
+                    title="Expand the buyer-intent basket"
+                    text="The current measured journeys were highly consistent. Add comparison, purchase, problem and decision-stage questions to test whether that strength holds outside the initial sample."
+                  />
+                )
+            }
+
+
+            <Action
+              number="03"
+              title="Verify public proof before changing content"
+              text="Compare the target's public claims, proof assets, authority signals and cited sources with recurring winners. Treat differences as possible contributing signals, not proven causes."
+            />
+
+
+            <Action
+              number="04"
+              title="Remeasure the exact same questions"
+              text="After an intervention, rerun the same buyer-question basket using the same measurement instrument. Keep failures as UNKNOWN and compare repeated-sample results rather than claiming success from task completion."
+            />
+
+          </div>
+
+        </section>
+
+
+
+        {/* ===================================================== */}
+        {/* METHODOLOGY */}
+        {/* ===================================================== */}
+
+        <section className="border-t border-white/10 py-10 print:border-zinc-300">
+
+          <Overline>
+            Methodology & Limitations
+          </Overline>
+
+
+          <div className="report-card mt-5 rounded-2xl border border-white/10 bg-white/[0.02] p-6">
+
+            <div className="space-y-4 text-sm leading-7 text-zinc-400 print:text-zinc-700">
+
+              <p>
+                <strong className="text-zinc-200 print:text-black">
+                  Measurement:
+                </strong>{" "}
+                {
+                  report.results.length
+                } buyer-intent questions were measured with{" "}
+                {
+                  report.samplesPerJourney
+                } repeated observations per question, per measured AI engine where possible.
+              </p>
+
+
+              <p>
+                <strong className="text-zinc-200 print:text-black">
+                  Instrument:
+                </strong>{" "}
+                <strong className="text-zinc-200 print:text-black">
+                  {report.providerCount ?? 1}
+                </strong>{" "}
+                consumer AI answer{" "}
+                {(report.providerCount ?? 1) === 1 ? "engine returned" : "engines returned"}{" "}
+                at least one valid observation;{" "}
+                <strong className="text-zinc-200 print:text-black">
+                  {report.attemptedProviderCount ?? report.providerCount ?? 1}
+                </strong>{" "}
+                {(report.attemptedProviderCount ?? report.providerCount ?? 1) === 1 ? "engine was" : "engines were"} attempted.
+                Exact provider identity is retained in the evidence and engine matrix.
+              </p>
+
+
+              <p>
+                <strong className="text-zinc-200 print:text-black">
+                  Failures:
+                </strong>{" "}
+                Failed or unavailable measurements are classified as UNKNOWN and excluded from mention-rate denominators rather than converted into false zeroes.
+              </p>
+
+
+              <p>
+                <strong className="text-zinc-200 print:text-black">
+                  Uncertainty:
+                </strong>{" "}
+                Generative answers are stochastic. Mention rates and confidence intervals describe the valid measured sample, not a permanent ranking or guarantee of future recommendations. Missing observations and engine imbalance are reported separately.
+              </p>
+
+
+                            <p>
+                <strong className="text-zinc-200 print:text-black">
+                  Source capture:
+                </strong>{" "}
+                This legacy batch did not separately record whether an empty source list meant no citations or source extraction unavailable. Source metrics therefore describe captured URLs only; missing source data is not treated as proof of no citation.
+              </p>
+
+<p>
+                <strong className="text-zinc-200 print:text-black">
+                  Causation:
+                </strong>{" "}
+                Differences in content, sources or public proof may be plausible contributing signals. A before/after visibility change alone does not establish that a specific intervention caused the change.
+              </p>
+
+            </div>
+
+          </div>
+
+        </section>
+
+
+
+        <footer className="border-t border-white/10 py-8 text-xs text-zinc-600 print:border-zinc-300">
+
+          <div className="flex flex-wrap justify-between gap-4">
+
+            <div>
+              SEROQ · AI Search Intelligence
+            </div>
+
+            <div>
+              Evidence labels: OBSERVED · VERIFIED · INFERRED · UNKNOWN
+            </div>
+
+          </div>
+
+        </footer>
+
+      </article>
+
+    </main>
+  );
+
+}
+
+
+function Overline({
+  children,
+}: {
+  children:
+    React.ReactNode;
+}) {
+
+  return (
+    <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-emerald-300 print:text-black">
+      {children}
+    </div>
+  );
+
+}
+
+
+function Metric({
+  label,
+  value,
+}: {
+  label:
+    string;
+
+  value:
+    string;
+}) {
+
+  return (
+    <div className="report-card bg-[#0b0e11] p-5 print:bg-white">
+
+      <div className="text-[10px] uppercase tracking-[0.14em] text-zinc-600">
+        {label}
+      </div>
+
+      <div className="mt-2 text-2xl font-semibold">
+        {value}
+      </div>
+
+    </div>
+  );
+
+}
+
+
+function JourneyMini({
+  item,
+}: {
+  item:
+    JourneyResult;
+}) {
+
+  return (
+    <div className="border-b border-white/10 pb-4 last:border-b-0 last:pb-0 print:border-zinc-200">
+
+      <div className="text-sm leading-6">
+        {
+          item.queryText
+        }
+      </div>
+
+      <div className="mt-1 text-xs text-zinc-500">
+        {
+          item.presence
+            ? `${item.presence.hits}/${item.presence.n} · ${pct(item.presence.rate)}`
+            : "UNKNOWN"
+        }
+      </div>
+
+    </div>
+  );
+
+}
+
+
+function Action({
+  number,
+  title,
+  text,
+}: {
+  number:
+    string;
+
+  title:
+    string;
+
+  text:
+    string;
+}) {
+
+  return (
+    <div className="report-card grid gap-4 rounded-2xl border border-white/10 bg-white/[0.02] p-5 sm:grid-cols-[48px_1fr]">
+
+      <div className="text-sm font-semibold text-emerald-300 print:text-black">
+        {number}
+      </div>
+
+      <div>
+
+        <div className="font-medium">
+          {title}
+        </div>
+
+        <p className="mt-2 text-sm leading-6 text-zinc-500 print:text-zinc-700">
+          {text}
+        </p>
+
+      </div>
+
+    </div>
+  );
+
+}
+
+
+
+
+

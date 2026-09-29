@@ -1,0 +1,137 @@
+{
+  "targetBrand": "swenta global",
+  "brandName": "Swenta Global",
+  "brandDomain": "swentaglobal.com",
+  "generatedAt": "2026-09-20T17:24:10.542Z",
+  "overall": {
+    "n": 80,
+    "hits": 0,
+    "rate": 0,
+    "confidenceInterval": {
+      "low": 0,
+      "high": 0.043
+    }
+  },
+  "results": [
+    {
+      "queryText": "Best outsourced accounting and finance BPO firms for UK accounting practices",
+      "tags": [
+        "Discovery",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Top offshore staffing solutions for UK year-end accounts and corporation tax",
+      "tags": [
+        "Discovery",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Hire dedicated offshore management accountants for mid-market UK businesses",
+      "tags": [
+        "Solution",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Specialist UK corporate tax advisory and HMRC dispute resolution consultancies",
+      "tags": [
+        "Solution",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Cost comparison between hiring in-house UK accountants vs offshore BPO teams",
+      "tags": [
+        "Problem",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Data security and GDPR compliance requirements for UK firms outsourcing to Pakistan and India",
+      "tags": [
+        "Problem",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Financial Accounting Advisory Services (FAAS) firms for complex IFRS and UK GAAP",
+      "tags": [
+        "Solution",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Swenta Global vs QX Global Group outsourced accounting review",
+      "tags": [
+        "Comparison",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Top consulting firms offering ERP implementation NetSuite and SAP for UK education",
+      "tags": [
+        "Enterprise",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    },
+    {
+      "queryText": "Swenta Global client reviews, service credibility, and verification",
+      "tags": [
+        "Decision",
+        "Commercial"
+      ],
+      "presence": {
+        "hits": 0,
+        "n": 8,
+        "rate": 0
+      }
+    }
+  ]
+}

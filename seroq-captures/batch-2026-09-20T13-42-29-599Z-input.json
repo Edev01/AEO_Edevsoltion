@@ -1,0 +1,86 @@
+{
+  "targetBrand": "Swenta Global",
+  "prompts": [
+    {
+      "queryId": "q_a1b7765876fb",
+      "queryText": "What are the best accounting and advisory firms for a growing UK business?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_b542476eb9dc",
+      "queryText": "Which firms can handle accounting, tax and business advisory under one roof?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_6cf5630af792",
+      "queryText": "What is the best outsourced finance and accounting provider for an SME?",
+      "tags": [
+        "discovery",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_06870fcbda22",
+      "queryText": "Which consulting firms can help a company implement an ERP system?",
+      "tags": [
+        "solution",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_a54d8dda7c71",
+      "queryText": "Who can help reduce tax risk for a business operating across multiple countries?",
+      "tags": [
+        "problem",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_15757b7b1c7c",
+      "queryText": "Which accounting firms provide both statutory audit and financial advisory services?",
+      "tags": [
+        "comparison",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_25c7b2fc6796",
+      "queryText": "Should a growing company outsource bookkeeping and finance operations or hire an in-house team?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_3ecc98e1cb65",
+      "queryText": "How do I choose a tax and accounting adviser for a UK SME?",
+      "tags": [
+        "decision",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_45e742351ac9",
+      "queryText": "Who can advise a business on restructuring, transactions and financial reporting?",
+      "tags": [
+        "purchase",
+        "high"
+      ]
+    },
+    {
+      "queryId": "q_66ffaac707ad",
+      "queryText": "Which firms provide internal controls and risk advisory services for businesses?",
+      "tags": [
+        "solution",
+        "medium"
+      ]
+    }
+  ],
+  "trialsPerJourney": 5
+}

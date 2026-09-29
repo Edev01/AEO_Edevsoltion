@@ -1,0 +1,72 @@
+{
+  "brand": "Edevsolutions",
+  "domain": "edevsolutions.com",
+  "category": "",
+  "queries": [
+    "best Edev companies",
+    "top Edev providers for businesses",
+    "which Edev provider should a company choose"
+  ],
+  "regressionThreshold": 10,
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.8-flash",
+      "classifyModel": "gemini-3.1-flash-lite",
+      "env": "GEMINI_API_KEY"
+    }
+  },
+  "basketVersion": 1,
+  "basketHistory": [
+    {
+      "version": 1,
+      "queries": [
+        "best Edev companies",
+        "top Edev providers for businesses",
+        "which Edev provider should a company choose"
+      ],
+      "since": "2026-09-18",
+      "kind": "initial"
+    }
+  ],
+  "validationCache": [
+    {
+      "query": "best Edev companies",
+      "valid": true,
+      "confidence": 0.85,
+      "alternate_meanings": [
+        "Enterprise Development software vendors (IT services)",
+        "Obscure manufacturing/electronic device acronyms"
+      ],
+      "dominant_interpretation": "Enterprise Development (IT/Software) services vendors",
+      "search_behavior": "retrieval-triggered",
+      "reason": "AI engines will retrieve current lists of B2B software development agencies, aligning with the brand's services.",
+      "validatedAt": "2026-09-18T12:35:02.738Z"
+    },
+    {
+      "query": "top Edev providers for businesses",
+      "valid": true,
+      "confidence": 0.9,
+      "alternate_meanings": [
+        "Enterprise Development outsourcing services",
+        "Electronic component supply chain providers"
+      ],
+      "dominant_interpretation": "Enterprise Development (Software/Tech) outsourcing providers",
+      "search_behavior": "retrieval-triggered",
+      "reason": "Direct request for business vendor recommendations, forcing the AI to scrape directories and review sites.",
+      "validatedAt": "2026-09-18T12:35:02.738Z"
+    },
+    {
+      "query": "which Edev provider should a company choose",
+      "valid": true,
+      "confidence": 0.95,
+      "alternate_meanings": [
+        "Decision framework for selecting development partners",
+        "Specific advice on software outsourcing vetting"
+      ],
+      "dominant_interpretation": "Comparison framework/advice for selecting a development vendor",
+      "search_behavior": "retrieval-triggered",
+      "reason": "Forces AI to retrieve comparison data or articles on vetting enterprise development firms.",
+      "validatedAt": "2026-09-18T12:35:02.738Z"
+    }
+  ]
+}

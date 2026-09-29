@@ -1,0 +1,72 @@
+{
+  "brand": "Edevsolutions",
+  "domain": "edevsolutions.com",
+  "category": "",
+  "queries": [
+    "best Edev companies",
+    "top Edev providers for businesses",
+    "which Edev provider should a company choose"
+  ],
+  "regressionThreshold": 10,
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.8-flash",
+      "classifyModel": "gemini-3.1-flash-lite",
+      "env": "GEMINI_API_KEY"
+    }
+  },
+  "basketVersion": 1,
+  "basketHistory": [
+    {
+      "version": 1,
+      "queries": [
+        "best Edev companies",
+        "top Edev providers for businesses",
+        "which Edev provider should a company choose"
+      ],
+      "since": "2026-09-18",
+      "kind": "initial"
+    }
+  ],
+  "validationCache": [
+    {
+      "query": "best Edev companies",
+      "valid": true,
+      "confidence": 0.75,
+      "alternate_meanings": [
+        "Software development / E-development firms",
+        "Economic development consultancies (public sector)"
+      ],
+      "dominant_interpretation": "E-development and software solutions providers",
+      "search_behavior": "retrieval-triggered",
+      "reason": "AI will interpret 'Edev' as e-development/software solutions, aligning with the brand name 'Edevsolutions'.",
+      "validatedAt": "2026-09-18T12:41:50.427Z"
+    },
+    {
+      "query": "top Edev providers for businesses",
+      "valid": true,
+      "confidence": 0.75,
+      "alternate_meanings": [
+        "B2B software development providers",
+        "Economic development service providers"
+      ],
+      "dominant_interpretation": "B2B software development and e-solution providers",
+      "search_behavior": "retrieval-triggered",
+      "reason": "Commercial query targeting B2B service vendors; AI will return relevant software/development provider lists.",
+      "validatedAt": "2026-09-18T12:41:50.427Z"
+    },
+    {
+      "query": "which Edev provider should a company choose",
+      "valid": true,
+      "confidence": 0.7,
+      "alternate_meanings": [
+        "Comparative advice for software/e-dev vendor selection",
+        "Advice on economic development agency selection"
+      ],
+      "dominant_interpretation": "Vendor selection and comparative analysis for digital/software development",
+      "search_behavior": "retrieval-triggered",
+      "reason": "Comparative intent query; AI will synthesize lists of software vendors to help with business decision-making.",
+      "validatedAt": "2026-09-18T12:41:50.427Z"
+    }
+  ]
+}

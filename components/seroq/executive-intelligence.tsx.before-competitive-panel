@@ -1,0 +1,727 @@
+﻿"use client";
+
+import { LiveMeasurementPanel } from "@/components/seroq/live-measurement-panel";
+
+import { useState } from "react";
+import type {
+  Provider,
+  ScrapeRun,
+} from "@/components/dashboard/types";
+
+type Props = {
+  runs: ScrapeRun[];
+  brandName: string;
+  brandWebsite: string;
+  prompts: string[];
+  competitors: string[];
+  onImportRuns: (runs: ScrapeRun[]) => void;
+};
+
+type Journey = {
+  prompt: string;
+  runs: number;
+  brandSeen: number;
+  brandRate: number;
+  citationSeen: number;
+  competitors: { name: string; count: number }[];
+};
+
+type MeasurementObservation = {
+  query?: string;
+  platform?: string;
+  provider?: string;
+  model?: string | null;
+  measurementStatus?: string;
+  presence?: {
+    mention?: string;
+    hits?: number;
+    valid?: number;
+    rate?: number | null;
+  };
+  citations?: string[];
+  competitors?: string[];
+  raw?: any;
+};
+
+function pct(value: number) {
+  return `${Math.round(value * 100)}%`;
+}
+
+function shortPrompt(value: string) {
+  return value.length > 115 ? value.slice(0, 112) + "…" : value;
+}
+
+function isDashboardProvider(value: string): value is Provider {
+  return [
+    "chatgpt",
+    "perplexity",
+    "gemini",
+    "copilot",
+    "google_ai",
+  ].includes(value);
+}
+
+function sentimentFromObservation(
+  observation: MeasurementObservation,
+): ScrapeRun["sentiment"] {
+  const label =
+    observation?.raw?.sentiment?.label ??
+    observation?.raw?.sentiment ??
+    "";
+
+  if (label === "positive") return "positive";
+  if (label === "negative") return "negative";
+  if (label === "neutral") return "neutral";
+
+  return observation.presence?.mention === "yes"
+    ? "neutral"
+    : "not-mentioned";
+}
+
+export function ExecutiveIntelligence({
+  runs,
+  brandName,
+  brandWebsite,
+  prompts,
+  competitors,
+  onImportRuns,
+}: Props) {
+  const [measuring, setMeasuring] = useState(false);
+  const [measureMessage, setMeasureMessage] = useState("");
+
+  async function runMeasurement() {
+    if (measuring) return;
+
+    if (!brandName.trim()) {
+      setMeasureMessage(
+        "Add the brand name in Project Settings first.",
+      );
+      return;
+    }
+
+    if (!brandWebsite.trim()) {
+      setMeasureMessage(
+        "Add the company website in Project Settings first.",
+      );
+      return;
+    }
+
+    const buyerQueries = prompts
+      .map((p) => p.trim())
+      .filter(Boolean)
+      .slice(0, 10);
+
+    if (buyerQueries.length === 0) {
+      setMeasureMessage(
+        "Add at least one buyer prompt in Prompt Hub first.",
+      );
+      return;
+    }
+
+    setMeasuring(true);
+    setMeasureMessage(
+      `Measuring ${buyerQueries.length} buyer journey${
+        buyerQueries.length === 1 ? "" : "s"
+      }…`,
+    );
+
+    try {
+      const response = await fetch("/api/seroq/measure", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          brand: brandName,
+          domain: brandWebsite,
+          queries: buyerQueries,
+          competitors,
+          /*
+           * One sample for the first product loop.
+           * We increase this for report-grade measurement later.
+           */
+          samples: 1,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok || !data?.ok) {
+        setMeasureMessage(
+          data?.error ||
+            "Live measurement could not be completed.",
+        );
+        return;
+      }
+
+      const observations: MeasurementObservation[] =
+        Array.isArray(data.observations)
+          ? data.observations
+          : [];
+
+      const now = new Date().toISOString();
+
+      const imported: ScrapeRun[] = [];
+      let unsupported = 0;
+      let unknown = 0;
+
+      for (const observation of observations) {
+        if (
+          observation.measurementStatus !== "MEASURED"
+        ) {
+          unknown++;
+          continue;
+        }
+
+        const platform = String(
+          observation.platform || "",
+        );
+
+        /*
+         * Current donor Provider type does not include Claude yet.
+         * Keep those observations in the raw AEO run but do not
+         * mislabel them as another platform.
+         */
+        if (!isDashboardProvider(platform)) {
+          unsupported++;
+          continue;
+        }
+
+        const mention =
+          observation.presence?.mention || "no";
+
+        const rate =
+          typeof observation.presence?.rate === "number"
+            ? observation.presence.rate
+            : mention === "yes"
+              ? 1
+              : 0;
+
+        const sourceList = Array.isArray(
+          observation.citations,
+        )
+          ? observation.citations
+          : [];
+
+        const competitorList = Array.isArray(
+          observation.competitors,
+        )
+          ? observation.competitors
+          : [];
+
+        imported.push({
+          provider: platform,
+          prompt: observation.query || "",
+          /*
+           * aeo-platform keeps the real raw provider response
+           * in its preserved run directory.
+           * We do not manufacture an answer string here.
+           */
+          answer:
+            "Raw AI response preserved in the Seroq measurement evidence store.",
+          sources: sourceList,
+          createdAt: now,
+
+          /*
+           * Legacy field required by donor components.
+           * Here it means transparent observed presence frequency,
+           * not the donor's old composite visibility formula.
+           */
+          visibilityScore: Math.round(rate * 100),
+
+          sentiment:
+            sentimentFromObservation(observation),
+
+          brandMentions:
+            mention === "yes" ? [brandName] : [],
+
+          competitorMentions: competitorList,
+        });
+      }
+
+      if (imported.length > 0) {
+        onImportRuns(imported);
+      }
+
+      const pieces = [
+        `${imported.length} measured observation${
+          imported.length === 1 ? "" : "s"
+        } imported`,
+      ];
+
+      if (unknown > 0) {
+        pieces.push(`${unknown} unknown`);
+      }
+
+      if (unsupported > 0) {
+        pieces.push(
+          `${unsupported} preserved but not yet shown`,
+        );
+      }
+
+      if (
+        typeof data?.summary?.costUsd === "number"
+      ) {
+        pieces.push(
+          `$${data.summary.costUsd.toFixed(4)} measured cost`,
+        );
+      }
+
+      setMeasureMessage(pieces.join(" · "));
+    } catch (error) {
+      setMeasureMessage(
+        error instanceof Error
+          ? error.message
+          : "Measurement failed.",
+      );
+    } finally {
+      setMeasuring(false);
+    }
+  }
+
+  const grouped = new Map<string, ScrapeRun[]>();
+
+  for (const run of runs) {
+    const key = run.prompt?.trim();
+    if (!key) continue;
+
+    const existing = grouped.get(key) ?? [];
+    existing.push(run);
+    grouped.set(key, existing);
+  }
+
+  const journeys: Journey[] = [
+    ...grouped.entries(),
+  ].map(([prompt, observations]) => {
+    let brandSeen = 0;
+    let citationSeen = 0;
+
+    const competitorCounts =
+      new Map<string, number>();
+
+    for (const run of observations) {
+      if ((run.brandMentions?.length ?? 0) > 0) {
+        brandSeen++;
+      }
+
+      if ((run.sources?.length ?? 0) > 0) {
+        citationSeen++;
+      }
+
+      const seenThisRun = new Set<string>();
+
+      for (
+        const competitor of
+        run.competitorMentions ?? []
+      ) {
+        const name = String(competitor).trim();
+        if (!name) continue;
+
+        const key = name.toLowerCase();
+
+        if (seenThisRun.has(key)) continue;
+        seenThisRun.add(key);
+
+        competitorCounts.set(
+          name,
+          (competitorCounts.get(name) ?? 0) + 1,
+        );
+      }
+    }
+
+    return {
+      prompt,
+      runs: observations.length,
+      brandSeen,
+      brandRate:
+        observations.length > 0
+          ? brandSeen / observations.length
+          : 0,
+      citationSeen,
+      competitors: [
+        ...competitorCounts.entries(),
+      ]
+        .map(([name, count]) => ({
+          name,
+          count,
+        }))
+        .sort((a, b) => b.count - a.count),
+    };
+  });
+
+  const totalObservations = runs.length;
+
+  const brandObservations = runs.filter(
+    (run) =>
+      (run.brandMentions?.length ?? 0) > 0,
+  ).length;
+
+  const overallPresence =
+    totalObservations > 0
+      ? brandObservations / totalObservations
+      : 0;
+
+  const missedJourneys = journeys
+    .filter((journey) => journey.brandRate < 0.5)
+    .sort((a, b) => {
+      const competitorA =
+        a.competitors[0]?.count ?? 0;
+
+      const competitorB =
+        b.competitors[0]?.count ?? 0;
+
+      return (
+        competitorB - competitorA ||
+        a.brandRate - b.brandRate ||
+        b.runs - a.runs
+      );
+    });
+
+  const recurringCompetitors =
+    new Map<string, number>();
+
+  for (const journey of journeys) {
+    for (const competitor of journey.competitors) {
+      recurringCompetitors.set(
+        competitor.name,
+        (recurringCompetitors.get(
+          competitor.name,
+        ) ?? 0) + competitor.count,
+      );
+    }
+  }
+
+  const topCompetitors = [
+    ...recurringCompetitors.entries(),
+  ]
+    .map(([name, count]) => ({
+      name,
+      count,
+    }))
+    .sort((a, b) => b.count - a.count)
+    .slice(0, 5);
+
+  const highestGap = missedJourneys[0];
+
+  return (
+<div className="space-y-5">
+      <LiveMeasurementPanel />
+      <section className="overflow-hidden rounded-2xl border border-th-border bg-th-card">
+        <div className="border-b border-th-border px-6 py-6">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-th-text-accent">
+            Seroq Executive Intelligence
+          </div>
+
+          <div className="mt-2 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-tight text-th-text">
+                Where {brandName || "your brand"} wins —
+                and where buyers find someone else.
+              </h2>
+
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-th-text-secondary">
+                Based on observed AI responses.
+                Presence is reported as frequency,
+                not an invented universal visibility
+                score.
+              </p>
+            </div>
+
+            <button
+              onClick={runMeasurement}
+              disabled={measuring}
+              className="rounded-xl bg-th-accent px-4 py-2.5 text-sm font-semibold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {measuring
+                ? "Measuring…"
+                : "Run live measurement"}
+            </button>
+          </div>
+
+          {measureMessage && (
+            <div className="mt-4 rounded-xl border border-th-border bg-th-card-alt px-4 py-3 text-sm text-th-text-secondary">
+              {measureMessage}
+            </div>
+          )}
+        </div>
+
+        {runs.length === 0 ? (
+          <div className="p-8">
+            <h3 className="text-xl font-semibold text-th-text">
+              No recommendation evidence yet.
+            </h3>
+
+            <p className="mt-3 max-w-2xl text-sm leading-6 text-th-text-secondary">
+              Configure the company in Project
+              Settings and add buyer questions in
+              Prompt Hub, then run the live
+              measurement above.
+            </p>
+
+            <div className="mt-5 rounded-xl border border-th-border bg-th-card-alt p-4 text-sm text-th-text-muted">
+              No synthetic score is shown when there
+              is no evidence.
+            </div>
+          </div>
+        ) : (
+          <div className="grid gap-px bg-th-border md:grid-cols-3">
+            <Metric
+              label="Observed presence"
+              value={pct(overallPresence)}
+              detail={`${brandObservations} of ${totalObservations} responses`}
+            />
+
+            <Metric
+              label="Journey gaps"
+              value={missedJourneys.length}
+              detail="Below 50% observed presence"
+            />
+
+            <Metric
+              label="Recurring competitors"
+              value={topCompetitors.length}
+              detail="Observed across tracked answers"
+            />
+          </div>
+        )}
+      </section>
+
+      {highestGap && (
+        <section className="rounded-2xl border border-th-accent/40 bg-th-accent-soft p-6">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-th-text-accent">
+              Highest observed recommendation gap
+            </div>
+
+            <div className="rounded-full bg-th-card px-3 py-1 text-xs font-medium text-th-text-accent">
+              OBSERVED
+            </div>
+          </div>
+
+          <h3 className="mt-3 max-w-4xl text-xl font-semibold leading-8 text-th-text">
+            {shortPrompt(highestGap.prompt)}
+          </h3>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-3">
+            <SmallMetric
+              label={`${brandName || "Brand"} presence`}
+              value={`${highestGap.brandSeen}/${highestGap.runs}`}
+              sub={pct(highestGap.brandRate)}
+            />
+
+            <SmallMetric
+              label="Leading observed competitor"
+              value={
+                highestGap.competitors[0]?.name ??
+                "None detected"
+              }
+              sub={
+                highestGap.competitors[0]
+                  ? `${highestGap.competitors[0].count}/${highestGap.runs} observations`
+                  : "No competitor evidence"
+              }
+            />
+
+            <SmallMetric
+              label="Responses with sources"
+              value={`${highestGap.citationSeen}/${highestGap.runs}`}
+              sub="Evidence available for investigation"
+            />
+          </div>
+
+          <div className="mt-5 rounded-xl border border-th-border bg-th-card p-4">
+            <div className="text-xs font-semibold uppercase tracking-wider text-th-text-muted">
+              What Seroq can conclude
+            </div>
+
+            <p className="mt-2 text-sm leading-6 text-th-text-secondary">
+              This buyer journey currently shows a
+              measurable recommendation gap.
+              Competitor recurrence and captured
+              sources tell us where to investigate
+              next. They do not, by themselves, prove
+              why an AI system selected one company
+              over another.
+            </p>
+          </div>
+        </section>
+      )}
+
+      {journeys.length > 0 && (
+        <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
+          <section className="rounded-2xl border border-th-border bg-th-card p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-th-text-muted">
+              Buyer journey map
+            </div>
+
+            <h3 className="mt-1 text-lg font-semibold text-th-text">
+              Recommendation presence by question
+            </h3>
+
+            <div className="mt-4 space-y-2">
+              {[...journeys]
+                .sort(
+                  (a, b) =>
+                    a.brandRate - b.brandRate,
+                )
+                .slice(0, 12)
+                .map((journey) => (
+                  <div
+                    key={journey.prompt}
+                    className="rounded-xl border border-th-border bg-th-card-alt p-4"
+                  >
+                    <div className="flex gap-4">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium leading-5 text-th-text">
+                          {shortPrompt(
+                            journey.prompt,
+                          )}
+                        </div>
+
+                        <div className="mt-2 text-xs text-th-text-muted">
+                          {journey.runs} observation
+                          {journey.runs === 1
+                            ? ""
+                            : "s"}
+
+                          {journey.competitors[0]
+                            ? ` · recurring: ${journey.competitors[0].name}`
+                            : ""}
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <div className="text-lg font-semibold text-th-text">
+                          {pct(
+                            journey.brandRate,
+                          )}
+                        </div>
+
+                        <div className="text-[11px] uppercase tracking-wider text-th-text-muted">
+                          presence
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-th-border">
+                      <div
+                        className="h-full rounded-full bg-th-accent"
+                        style={{
+                          width: `${Math.max(
+                            2,
+                            Math.round(
+                              journey.brandRate *
+                                100,
+                            ),
+                          )}%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                ))}
+            </div>
+          </section>
+
+          <section className="rounded-2xl border border-th-border bg-th-card p-5">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-th-text-muted">
+              Competitive recurrence
+            </div>
+
+            <h3 className="mt-1 text-lg font-semibold text-th-text">
+              Brands AI answers keep surfacing
+            </h3>
+
+            <div className="mt-4 space-y-3">
+              {topCompetitors.length ? (
+                topCompetitors.map(
+                  (competitor, index) => (
+                    <div
+                      key={competitor.name}
+                      className="flex items-center gap-3 rounded-xl border border-th-border bg-th-card-alt p-3"
+                    >
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-th-accent-soft text-sm font-semibold text-th-text-accent">
+                        {index + 1}
+                      </div>
+
+                      <div className="min-w-0 flex-1">
+                        <div className="truncate text-sm font-medium text-th-text">
+                          {competitor.name}
+                        </div>
+
+                        <div className="text-xs text-th-text-muted">
+                          {competitor.count} observed
+                          appearance
+                          {competitor.count === 1
+                            ? ""
+                            : "s"}
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                )
+              ) : (
+                <div className="rounded-xl border border-th-border bg-th-card-alt p-4 text-sm text-th-text-muted">
+                  No recurring competitors detected
+                  yet.
+                </div>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Metric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+}) {
+  return (
+    <div className="bg-th-card px-6 py-5">
+      <div className="text-xs font-medium uppercase tracking-wider text-th-text-muted">
+        {label}
+      </div>
+
+      <div className="mt-2 text-3xl font-semibold tracking-tight text-th-text">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-th-text-muted">
+        {detail}
+      </div>
+    </div>
+  );
+}
+
+function SmallMetric({
+  label,
+  value,
+  sub,
+}: {
+  label: string;
+  value: string;
+  sub: string;
+}) {
+  return (
+    <div className="rounded-xl border border-th-border bg-th-card p-4">
+      <div className="text-xs text-th-text-muted">
+        {label}
+      </div>
+
+      <div className="mt-1 truncate text-base font-semibold text-th-text">
+        {value}
+      </div>
+
+      <div className="mt-1 text-xs text-th-text-secondary">
+        {sub}
+      </div>
+    </div>
+  );
+}
+

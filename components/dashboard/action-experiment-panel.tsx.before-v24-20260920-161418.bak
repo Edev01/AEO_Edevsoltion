@@ -1,0 +1,363 @@
+﻿"use client";
+
+import { useMemo } from "react";
+import type {
+  ScrapeRun,
+  SeroqActionItem,
+} from "@/components/dashboard/types";
+
+type Props = {
+  action: SeroqActionItem;
+  runs: ScrapeRun[];
+  onChange: (patch: Partial<SeroqActionItem>) => void;
+};
+
+function runId(run: ScrapeRun): string {
+  return `${run.provider}|${run.createdAt}|${run.prompt}`;
+}
+
+function parseTime(value?: string): number | null {
+  if (!value) return null;
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function mentionObserved(run: ScrapeRun): boolean {
+  return (run.brandMentions?.length ?? 0) > 0;
+}
+
+function percent(numerator: number, denominator: number): string {
+  if (denominator <= 0) return "â€”";
+  return `${Math.round((numerator / denominator) * 100)}%`;
+}
+
+type ProviderComparison = {
+  provider: ScrapeRun["provider"];
+  baselineCount: number;
+  remeasurementCount: number;
+  baselineMentions: number;
+  remeasurementMentions: number;
+  baselineRate: number;
+  remeasurementRate: number;
+  delta: number;
+};
+
+function compareSets(
+  baseline: ScrapeRun[],
+  remeasurement: ScrapeRun[],
+): ProviderComparison[] {
+  const providers = new Set([
+    ...baseline.map((run) => run.provider),
+    ...remeasurement.map((run) => run.provider),
+  ]);
+
+  const rows: ProviderComparison[] = [];
+
+  for (const provider of providers) {
+    const before = baseline.filter((run) => run.provider === provider);
+    const after = remeasurement.filter((run) => run.provider === provider);
+
+    // Strict comparability: do not produce a delta unless both sides exist.
+    if (before.length === 0 || after.length === 0) continue;
+
+    const beforeMentions = before.filter(mentionObserved).length;
+    const afterMentions = after.filter(mentionObserved).length;
+
+    const baselineRate = beforeMentions / before.length;
+    const remeasurementRate = afterMentions / after.length;
+
+    rows.push({
+      provider,
+      baselineCount: before.length,
+      remeasurementCount: after.length,
+      baselineMentions: beforeMentions,
+      remeasurementMentions: afterMentions,
+      baselineRate,
+      remeasurementRate,
+      delta: remeasurementRate - baselineRate,
+    });
+  }
+
+  return rows.sort((a, b) => a.provider.localeCompare(b.provider));
+}
+
+export function ActionExperimentPanel({
+  action,
+  runs,
+  onChange,
+}: Props) {
+  const journey = action.journey?.trim() ?? "";
+
+  const journeyRuns = useMemo(() => {
+    if (!journey) return [];
+
+    return runs
+      .filter((run) => run.prompt.trim() === journey)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }, [runs, journey]);
+
+  const runMap = useMemo(() => {
+    return new Map(journeyRuns.map((run) => [runId(run), run]));
+  }, [journeyRuns]);
+
+  const baselineRuns = useMemo(() => {
+    return action.baselineRunIds
+      .map((id) => runMap.get(id))
+      .filter((run): run is ScrapeRun => Boolean(run));
+  }, [action.baselineRunIds, runMap]);
+
+  const remeasurementRuns = useMemo(() => {
+    return action.remeasurementRunIds
+      .map((id) => runMap.get(id))
+      .filter((run): run is ScrapeRun => Boolean(run));
+  }, [action.remeasurementRunIds, runMap]);
+
+  const comparisons = useMemo(
+    () => compareSets(baselineRuns, remeasurementRuns),
+    [baselineRuns, remeasurementRuns],
+  );
+
+  const completedAtMs = parseTime(action.completedAt);
+
+  const eligibleBaseline = useMemo(() => {
+    if (!journey) return [];
+
+    const approvalMs = parseTime(action.approvedAt);
+
+    // Baseline is evidence already available at/before approval.
+    // If approval time is absent, do not invent a baseline.
+    if (approvalMs === null) return [];
+
+    return journeyRuns.filter((run) => {
+      const runMs = parseTime(run.createdAt);
+      return runMs !== null && runMs <= approvalMs;
+    });
+  }, [journey, journeyRuns, action.approvedAt]);
+
+  const eligibleRemeasurement = useMemo(() => {
+    if (!journey || completedAtMs === null) return [];
+
+    // Remeasurement must be strictly after intervention completion.
+    return journeyRuns.filter((run) => {
+      const runMs = parseTime(run.createdAt);
+      return runMs !== null && runMs > completedAtMs;
+    });
+  }, [journey, journeyRuns, completedAtMs]);
+
+  function captureBaseline(): void {
+    if (!action.approvedAt || eligibleBaseline.length === 0) return;
+
+    onChange({
+      baselineRunIds: eligibleBaseline.map(runId),
+    });
+  }
+
+  function captureRemeasurement(): void {
+    if (action.status !== "completed" || eligibleRemeasurement.length === 0) {
+      return;
+    }
+
+    onChange({
+      remeasurementRunIds: eligibleRemeasurement.map(runId),
+    });
+  }
+
+  function clearExperiment(): void {
+    onChange({
+      baselineRunIds: [],
+      remeasurementRunIds: [],
+    });
+  }
+
+  if (!journey) {
+    return (
+      <div className="mt-3 rounded-lg border border-th-border bg-th-card p-3">
+        <div className="text-[11px] font-medium uppercase tracking-wider text-th-text-muted">
+          Experiment integrity
+        </div>
+        <p className="mt-1 text-xs leading-relaxed text-th-text-muted">
+          This action is not linked to a specific buyer journey, so Seroq will
+          not manufacture a before/after experiment for it. Journey-level
+          comparability is required.
+        </p>
+      </div>
+    );
+  }
+
+  const hasBaseline = baselineRuns.length > 0;
+  const hasRemeasurement = remeasurementRuns.length > 0;
+  const hasComparableProviders = comparisons.length > 0;
+
+  return (
+    <div className="mt-3 rounded-lg border border-th-border bg-th-card p-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-[11px] font-medium uppercase tracking-wider text-th-text-muted">
+            Experiment integrity
+          </div>
+          <p className="mt-1 max-w-3xl text-xs leading-relaxed text-th-text-muted">
+            Baseline observations must predate approval. Remeasurement must
+            occur after completion. Seroq only compares providers present on
+            both sides for this exact buyer journey. Any delta below is an
+            observed mention-presence change, not proof that the intervention
+            caused it.
+          </p>
+        </div>
+
+        {(hasBaseline || hasRemeasurement) && (
+          <button
+            type="button"
+            onClick={clearExperiment}
+            className="shrink-0 rounded-md border border-th-border px-2.5 py-1 text-[11px] font-medium text-th-text-muted hover:bg-th-card-hover"
+          >
+            Clear experiment
+          </button>
+        )}
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-md border border-th-border bg-th-card-alt p-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-th-text-muted">
+            Baseline
+          </div>
+          <div className="mt-1 text-lg font-semibold text-th-text">
+            {baselineRuns.length}
+          </div>
+          <div className="text-[11px] text-th-text-muted">
+            {eligibleBaseline.length} currently eligible
+          </div>
+        </div>
+
+        <div className="rounded-md border border-th-border bg-th-card-alt p-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-th-text-muted">
+            Remeasurement
+          </div>
+          <div className="mt-1 text-lg font-semibold text-th-text">
+            {remeasurementRuns.length}
+          </div>
+          <div className="text-[11px] text-th-text-muted">
+            {eligibleRemeasurement.length} currently eligible
+          </div>
+        </div>
+
+        <div className="rounded-md border border-th-border bg-th-card-alt p-2.5">
+          <div className="text-[10px] uppercase tracking-wider text-th-text-muted">
+            Comparable providers
+          </div>
+          <div className="mt-1 text-lg font-semibold text-th-text">
+            {comparisons.length}
+          </div>
+          <div className="text-[11px] text-th-text-muted">
+            same journey + provider
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 flex flex-wrap gap-2">
+        {!hasBaseline && (
+          <button
+            type="button"
+            disabled={!action.approvedAt || eligibleBaseline.length === 0}
+            onClick={captureBaseline}
+            className="rounded-md bg-th-accent px-3 py-1.5 text-xs font-semibold text-th-text-inverse disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Capture approved baseline
+          </button>
+        )}
+
+        {action.status === "completed" && (
+          <button
+            type="button"
+            disabled={eligibleRemeasurement.length === 0}
+            onClick={captureRemeasurement}
+            className="rounded-md bg-th-accent px-3 py-1.5 text-xs font-semibold text-th-text-inverse disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Capture post-completion remeasurement
+          </button>
+        )}
+      </div>
+
+      {!action.approvedAt && (
+        <p className="mt-2 text-[11px] text-th-text-muted">
+          Approve this action first. Seroq will not establish a baseline after
+          implementation has already begun.
+        </p>
+      )}
+
+      {action.approvedAt && !hasBaseline && eligibleBaseline.length === 0 && (
+        <p className="mt-2 text-[11px] text-th-text-muted">
+          No pre-approval observations exist for this exact buyer journey.
+          Seroq will leave the baseline empty rather than fabricate one.
+        </p>
+      )}
+
+      {action.status === "completed" &&
+        eligibleRemeasurement.length === 0 && (
+          <p className="mt-2 text-[11px] text-th-text-muted">
+            No observations have been captured after completion yet. Run the
+            same buyer journey again before recording remeasurement.
+          </p>
+        )}
+
+      {hasBaseline && hasRemeasurement && !hasComparableProviders && (
+        <div className="mt-3 rounded-md border border-th-border bg-th-card-alt p-2.5 text-xs text-th-text-muted">
+          Baseline and remeasurement exist, but no provider appears on both
+          sides. Seroq therefore marks the comparison as non-comparable.
+        </div>
+      )}
+
+      {hasComparableProviders && (
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[620px] border-collapse text-left text-xs">
+            <thead>
+              <tr className="border-b border-th-border text-th-text-muted">
+                <th className="px-2 py-2 font-medium">Provider</th>
+                <th className="px-2 py-2 font-medium">Baseline</th>
+                <th className="px-2 py-2 font-medium">After</th>
+                <th className="px-2 py-2 font-medium">Mention presence</th>
+                <th className="px-2 py-2 font-medium">Observed delta</th>
+              </tr>
+            </thead>
+            <tbody>
+              {comparisons.map((row) => (
+                <tr
+                  key={row.provider}
+                  className="border-b border-th-border/70 last:border-0"
+                >
+                  <td className="px-2 py-2 font-medium text-th-text">
+                    {row.provider}
+                  </td>
+                  <td className="px-2 py-2 text-th-text-secondary">
+                    {row.baselineCount} obs
+                  </td>
+                  <td className="px-2 py-2 text-th-text-secondary">
+                    {row.remeasurementCount} obs
+                  </td>
+                  <td className="px-2 py-2 text-th-text-secondary">
+                    {percent(row.baselineMentions, row.baselineCount)}
+                    {" â†’ "}
+                    {percent(
+                      row.remeasurementMentions,
+                      row.remeasurementCount,
+                    )}
+                  </td>
+                  <td className="px-2 py-2 font-medium text-th-text">
+                    {row.delta > 0 ? "+" : ""}
+                    {Math.round(row.delta * 100)} pp
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          <p className="mt-2 text-[11px] leading-relaxed text-th-text-muted">
+            â€œMention presenceâ€ is deliberately narrower than recommendation
+            intelligence. It is shown here only as a comparable observational
+            signal until the recommendation classifier is wired into the
+            experiment layer.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}

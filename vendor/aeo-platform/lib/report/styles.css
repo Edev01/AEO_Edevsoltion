@@ -1,0 +1,3971 @@
+/* ============================================================
+   AEO Tracker · Webappski marketing brand, loud register (v3)
+
+   2026-08 redesign. The layout engine below (bento cells, masthead,
+   rail) is unchanged; every colour, type and depth value it reads now
+   resolves to the Webappski marketing system, so no section is left on
+   the previous warm-paper editorial palette. Loud-register components
+   (lr-*) live in their own block at the end of this file.
+
+   Font substitution, on purpose: the marketing system specifies
+   Montserrat. This report embeds its fonts as base64 woff2 so it works
+   offline and in email, and Montserrat is not one of the three on disk.
+   Geist — the geometric grotesque already embedded — takes both the
+   display and body role. JetBrains Mono is the marketing system's own
+   mono and matches exactly.
+   ============================================================ */
+
+:root {
+  /* Surfaces — cool neutral, three steps */
+  --paper:        #F8F9FA;
+  --paper-2:      #F2F4F7;
+  --paper-3:      #E7E9ED;
+  --raised:       #FFFFFF;
+  --line:         #E7E9ED;
+  --line-strong:  #D3D7DE;
+  --line-soft:    #F2F4F7;
+
+  /* Surface layers — bento hierarchy. Dominance in this system comes from
+     the accent rail + elevation, not from a tinted card: a coloured card
+     on a coloured page reads as a second brand. */
+  --surface-page:     var(--paper);
+  --surface-cell:     var(--raised);
+  --surface-dominant: var(--raised);
+  --surface-quiet:    var(--paper);
+  --surface-inset:    var(--paper);
+
+  /* Lede background — the marketing hero wash. Linear sweep into accent
+     plus a wide conic tint from the top-right corner. */
+  --lede-bg:
+    linear-gradient(50deg, rgba(248,249,250,0.30) 32.11%, rgba(247,115,0,0.30) 100%),
+    conic-gradient(from 207deg at 100% 0%, rgba(248,249,250,0.10) 0deg, rgba(247,115,0,0.10) 360deg),
+    #F8F9FA;
+
+  /* Ink — four stops. ink-4 is the lightest tone allowed to carry a
+     sentence or a number; it holds 4.7:1 on white. The marketing
+     system's #A8AEB7 measures 2.23:1 and is confined to --text-tertiary
+     below, which only ever sets uppercase micro-labels. */
+  --ink:          #3A3A3A;
+  --ink-2:        #565656;
+  --ink-3:        #565656;
+  --ink-4:        #6E747E;
+
+  /* Named text roles from the marketing system, used directly by the
+     loud-register components. */
+  --text-primary:   #3A3A3A;
+  --text-secondary: #565656;
+  --text-tertiary:  #A8AEB7;   /* uppercase eyebrow labels ONLY — 2.23:1 */
+
+  /* Accent — marketing orange. --accent (#F77300) is a FILL colour: bars,
+     dots, rails, chart strokes. White text on it measures 2.84:1 at 14px
+     bold, so anything with text on top uses --orange-600 (#B85000, 5.02:1)
+     instead. That split also stops orange meaning both "an engine names
+     you" and "primary action". */
+  --accent:       #F77300;
+  --background-accent: #F77300;
+  --accent-deep:  #B85000;
+  --orange-600:   #B85000;
+  --accent-soft:  #FBD5AE;
+  --accent-tint:  rgba(247,115,0,0.12);
+  --accent-ink:   #B85000;
+  /* The portal's own --accent-soft. It is a WASH (8% orange on white), far
+     lighter than this file's --accent-soft (#FBD5AE, a solid peach), so it
+     cannot reuse that name. Carried verbatim from webappka's
+     variables.scss:38 — the three blocks below share their visual language
+     with the portal's report-v2 card and must resolve to the same pixels. */
+  --accent-wash:  rgba(247,115,0,0.08);
+
+  /* Marketing blue — secondary accent. Carries "internal build only",
+     links, and rival series in charts. */
+  --editor:       #1250B0;
+  --editor-deep:  #0B2E6B;
+  --editor-soft:  #C6DDF2;
+  --editor-tint:  #E8F1FA;
+  --editor-ink:   #0B2E6B;
+
+  /* Third accent slot — folded onto the orange family so the report never
+     shows a fourth hue nobody chose. */
+  --clay:         #B85000;
+  --clay-soft:    #F3CFB4;
+  --clay-tint:    #FBE7D6;
+
+  /* Engine palette — one blue ramp, four distinguishable steps. Engine
+     colour is always accompanied by the engine's name in text. */
+  --eng-gpt:      #1BAFE2;
+  --eng-gpt-soft: #D6F0FA;
+  --eng-gem:      #1685D7;
+  --eng-gem-soft: #D5E9F8;
+  --eng-cla:      #1250B0;
+  --eng-cla-soft: #D3E0F2;
+  --eng-perp:     #0B2E6B;
+  --eng-perp-soft:#CFD9E8;
+
+  /* Status — the surviving triple. The marketing set won; --good / --bad /
+     --warn are retired outright rather than aliased, so nothing can drift
+     back to the old palette by accident.
+       --success-color       #2E7D32  5.05:1 on white text
+       --error-color-strong  #C22B2D  5.74:1 on white text
+       --orange-600          #B85000  5.02:1 on white text — ambiguous movement
+     --error-color #FF4D4F fails AA for white text (3.27:1) and is therefore
+     restricted to decorative fill with nothing on top of it: the 6px alert
+     rails and the run blocks. */
+  --success-color:      #2E7D32;
+  --success-soft:       #DCEBDD;
+  --error-color:        #FF4D4F;
+  --error-color-strong: #C22B2D;
+  --error-soft:         #F7D9D9;
+  --orange-soft:        #FBE7D6;
+
+  /* Semantic data tokens — used by every progress-bar. "you" rows always render
+     in --accent (warm orange, brand). "competitor" rows render in --competitor
+     (warm brick) so the eye instantly groups «не ты». Override locally if a
+     different surface (e.g. dark cell) needs lighter contrast. */
+  --you:          var(--accent);
+  --competitor:   #B45941;
+
+  /* Type — the marketing system sets Montserrat for display and body; Geist
+     is the embedded substitute (see the file header). */
+  --display: "Geist", "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --sans:    "Geist", "Montserrat", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  --mono:    "JetBrains Mono", ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* Type ramp — marketing scale. Centralised so the bento-hierarchy upgrade
+     can scale dominant titles without hunting through 30 selectors. */
+  --t-display-1: 60px;    /* verdict headline */
+  --t-display-2: 42px;    /* section title */
+  --t-display-3: 36px;    /* card title XL */
+  --t-display-4: 28px;    /* card title */
+  --t-display-5: 22px;    /* standard cell title */
+  --t-display-6: 17px;    /* sub-section title (engine-name etc.) */
+  --t-overline:  12px;    /* uppercase micro-label */
+  --t-body:      16px;
+  --t-meta:      13px;
+
+  /* Depth — one neutral elevation, as the marketing cards use. Nothing in
+     this system floats higher than 24px of blur. */
+  --depth-1: 0 1px 0 var(--line);
+  --depth-2: 0 1px 2px rgba(0,0,0,0.05), inset 0 0 0 1px var(--line);
+  --depth-3: 0 8px 24px rgba(0,0,0,0.06), inset 0 0 0 1px var(--line);
+  --depth-edge-accent: inset 0 2px 0 var(--accent);
+  --depth-edge-editor: inset 0 2px 0 var(--editor);
+
+  /* Motion — editorial pacing. Fast for hover, base for state, slow for
+     section reveals. Never longer than 600ms anywhere. */
+  --motion-fast: 140ms;
+  --motion-base: 260ms;
+  --motion-slow: 520ms;
+  --ease-edit:   cubic-bezier(0.2, 0.7, 0.2, 1);
+  --ease-emerge: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* Radius — four steps, matching the marketing cards: xs (4px) for inline
+     code and swatches, sm (8px) for callouts and inset blocks, md (12px)
+     for cards, lg (16px) for the hero. Pills are 999px inline. */
+  --r-xs: 4px;
+  /* Portal's --shadow-card-sm (webappka variables.scss:396) — used by the
+     matrix toggle's pressed state so the control reads identically on both
+     surfaces. */
+  --shadow-card-sm: 0 2px 8px rgba(0,0,0,0.05);
+  --r-sm: 8px;
+  --r-md: 12px;
+  --r-lg: 16px;
+
+  /* Paper grain retired with the warm-paper palette — the marketing
+     surface is flat. Kept as a token so the body::before rule below still
+     resolves without a special case. */
+  --paper-grain: none;
+
+  /* Legacy token aliases — the mc-bridge card's CSS module, written
+     against v0.4 token names, continues to resolve. */
+  --bg:           var(--paper);
+  --bg-raised:    var(--raised);
+  --bg-subtle:    var(--paper-2);
+  --border:       var(--line);
+  --border-strong: var(--line-strong);
+  --font-mono:    var(--mono);
+  --pos:          var(--success-color);
+  --neg:          var(--error-color-strong);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  position: relative;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: var(--t-body);
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: var(--paper-grain);
+  background-size: 180px 180px;
+  opacity: 0.045;
+  mix-blend-mode: multiply;
+}
+
+::selection { background: var(--accent-tint); color: var(--ink); }
+
+.page { position: relative; z-index: 1; max-width: 1240px; margin: 0 auto; padding: 36px 36px 80px; }
+
+/* ─── Masthead — two-row editorial header ──────────────────
+   Row 1 (tools): brand mark · run meta · engine pills, all mono, one
+   continuous dashboard strip separated by hair lines.
+   Row 2 (headline): the brand name set in oversized display, with the
+   domain anchored on the right as a directional cue. Reads like a print
+   masthead, not a SaaS topbar. */
+.mast {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  padding-bottom: 22px;
+  border-bottom: 1px solid var(--line);
+}
+.mast-tools {
+  display: flex;
+  align-items: center;
+  gap: 28px;
+  flex-wrap: wrap;
+  padding-bottom: 14px;
+  border-bottom: 1px dashed var(--line);
+}
+.mast-mark {
+  display: flex; align-items: center; gap: 10px;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  text-transform: lowercase;
+}
+.mast-mark-dot {
+  display: inline-block;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 32% 28%, var(--accent), var(--accent-deep) 70%),
+    var(--accent-deep);
+  box-shadow:
+    0 0 0 2px var(--accent-tint),
+    0 1px 1px rgba(26,22,16,0.08);
+}
+.mast-mark strong { font-weight: 600; color: var(--ink); letter-spacing: 0.01em; }
+.mast-mark-ver {
+  padding: 1.5px 6px;
+  border: 1px solid var(--line-strong);
+  border-radius: 99px;
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  color: var(--ink-3);
+  background: var(--paper);
+}
+.mast-meta {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.mast-meta > div {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 18px;
+  border-right: 1px solid var(--line);
+}
+.mast-meta > div:first-child { padding-left: 0; }
+.mast-meta > div:last-child  { border-right: 0; padding-right: 0; }
+.mast-meta dt {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin: 0;
+}
+.mast-meta dd {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.mast-engines {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-left: auto;
+}
+.eng-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 9px 3px 8px;
+  border-radius: 99px;
+  background: color-mix(in srgb, var(--c) 8%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--c) 25%, var(--line));
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: color-mix(in srgb, var(--c) 65%, var(--ink));
+  font-weight: 500;
+  text-transform: lowercase;
+}
+.eng-pill-dot {
+  display: inline-block;
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: var(--c);
+}
+.eng-pill-name { line-height: 1; }
+
+.mast-headline {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  flex-wrap: wrap;
+}
+.mast-title {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: var(--t-display-2);
+  line-height: 0.96;
+  letter-spacing: -0.035em;
+  color: var(--ink);
+}
+.mast-domain {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-3);
+  letter-spacing: 0;
+  font-weight: 400;
+  padding-bottom: 6px;
+}
+.mast-domain::before {
+  content: "";
+  width: 24px;
+  height: 1px;
+  background: var(--line-strong);
+  display: inline-block;
+}
+/* Measurement-scope disclaimer — muted, full-width under the headline so it
+   never crowds the date/version row (review #3, AP-DISCLAIMER-API-SURFACE). */
+.mast-disclaimer {
+  margin: 12px 0 0;
+  max-width: 70ch;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  letter-spacing: 0;
+}
+
+/* ─── Hero — editorial dominant number ──────────────────── */
+.hero {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1.55fr 1fr;
+  gap: 48px;
+  margin: 28px 0 40px;
+  padding: 38px 40px 36px;
+  border-radius: 20px;
+  background: var(--lede-bg);
+  border: 1px solid var(--line);
+  overflow: hidden;
+}
+
+.hero-ghost {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 70%;
+  pointer-events: none;
+  opacity: 1;
+  mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
+  -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 30%, #000 100%);
+}
+.hero-ghost svg { width: 100%; height: 100%; }
+
+.hero-main { position: relative; z-index: 2; }
+
+.hero-kicker {
+  display: flex; align-items: center; gap: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 22px;
+}
+.hero-kicker-label {
+  position: relative;
+  padding-left: 24px;
+}
+.hero-kicker-label::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 16px;
+  height: 1px;
+  background: var(--accent);
+}
+
+.hero-num-wrap {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+  position: relative;
+  font-feature-settings: "tnum", "ss01";
+  font-variant-numeric: tabular-nums;
+  flex-wrap: wrap;
+}
+.hero-num {
+  font-family: var(--display);
+  /* Dead selector (no emitter in lib/ or bin/) — kept in step with the live
+     register so a future revival cannot reintroduce a sub-300 hairline. */
+  font-weight: 600;
+  font-size: var(--t-display-1);
+  line-height: 0.86;
+  letter-spacing: -0.045em;
+  color: var(--ink);
+  display: inline-block;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 700ms ease-out, transform 700ms var(--ease-edit);
+}
+.hero-num.is-ready {
+  opacity: 1;
+  transform: translateY(0);
+}
+.hero-num-frac {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: 30px;
+  letter-spacing: -0.02em;
+  color: var(--ink-3);
+  white-space: nowrap;
+  align-self: flex-end;
+  margin-bottom: 24px;
+  line-height: 1;
+}
+
+/* Bucket marker — sits inline with the big number as a bracketed label.
+   Reads as a typesetter's gloss on the score rather than a generic pill.
+   data-bucket drives the colour: emerging→bad, building→warn,
+   strong→good, dominant→accent. */
+.hero-bucket {
+  align-self: flex-end;
+  margin: 0 0 30px 18px;
+  display: inline-flex;
+  flex-direction: column;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--bucket-c, var(--error-color-strong));
+  --bucket-c: var(--error-color-strong);
+}
+.hero-bucket[data-bucket="emerging"] { --bucket-c: var(--error-color-strong); }
+.hero-bucket[data-bucket="building"] { --bucket-c: var(--orange-600); }
+.hero-bucket[data-bucket="strong"]   { --bucket-c: var(--success-color); }
+.hero-bucket[data-bucket="dominant"] { --bucket-c: var(--accent); }
+.hero-bucket-bar {
+  display: block;
+  width: 28px;
+  height: 3px;
+  background: var(--bucket-c);
+}
+.hero-bucket-label {
+  font-weight: 600;
+  line-height: 1;
+}
+
+@keyframes count-in {
+  from { opacity: 0; transform: translateY(8px); letter-spacing: -0.02em; }
+  to   { opacity: 1; transform: translateY(0);    letter-spacing: -0.045em; }
+}
+
+.hero-narrative {
+  margin: 26px 0 0;
+  max-width: 46ch;
+  font-family: var(--display);
+  font-weight: 350;
+  font-style: italic;
+  font-size: 23px;
+  line-height: 1.42;
+  color: var(--ink-2);
+  letter-spacing: -0.008em;
+}
+.hero-narrative[data-drop="true"]::first-letter {
+  font-family: var(--display);
+  font-weight: 300;
+  font-style: normal;
+  font-size: 4.4em;
+  line-height: 0.82;
+  float: left;
+  margin: 0.08em 0.12em -0.08em 0;
+  color: var(--accent);
+  letter-spacing: -0.03em;
+}
+.hero-narrative b {
+  font-weight: 500;
+  font-style: normal;
+  color: var(--ink);
+  background: linear-gradient(180deg, transparent 62%, var(--accent-tint) 62%);
+  padding: 0 2px;
+}
+
+.hero-delta {
+  margin-top: 18px;
+  display: inline-flex; align-items: center; gap: 10px;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--ink-3);
+}
+.hero-delta-arrow {
+  font-size: 14px;
+  font-weight: 600;
+}
+.hero-delta.pos { color: var(--success-color); }
+.hero-delta.neg { color: var(--error-color-strong); }
+.hero-delta.flat { color: var(--ink-3); }
+.hero-delta-mini {
+  width: 60px; height: 18px;
+  display: inline-block;
+  vertical-align: middle;
+}
+
+/* Hero side: 3 narrative-style KPIs stacked */
+.hero-side {
+  position: relative; z-index: 2;
+  display: flex; flex-direction: column;
+  gap: 28px;
+  padding-left: 32px;
+  border-left: 1px solid var(--line);
+  min-width: 0;
+}
+.hero-side .hero-kpi + .hero-kpi {
+  padding-top: 28px;
+  border-top: 1px solid var(--line);
+}
+.hero-side .hero-kpi { min-width: 0; }
+.hero-kpi { display: flex; flex-direction: column; gap: 4px; }
+.hero-kpi-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--ink-4);
+  display: flex; align-items: center; gap: 8px;
+}
+.hero-kpi-label::after {
+  content: "";
+  flex: 1;
+  border-bottom: 1px dashed var(--line-strong);
+  opacity: 0.5;
+  margin-top: 2px;
+}
+.hero-kpi-row {
+  display: flex; align-items: baseline; gap: 10px;
+  font-feature-settings: "tnum";
+}
+.hero-kpi-num {
+  font-family: var(--display);
+  font-weight: 350;
+  font-size: 38px;
+  letter-spacing: -0.025em;
+  line-height: 1;
+  color: var(--ink);
+}
+.hero-kpi-num-sub {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--ink-3);
+  font-variant-numeric: tabular-nums;
+}
+.hero-kpi-num-sub.pos { color: var(--success-color); }
+.hero-kpi-num-sub.neg { color: var(--error-color-strong); }
+.hero-kpi-context {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  line-height: 1.4;
+}
+.hero-kpi-context b {
+  color: var(--ink);
+  font-weight: 500;
+}
+.hero-kpi-context .e {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--c);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+/* ─── Promoted bridge + sponsor (2-up under hero) ─────── */
+.promote {
+  display: grid;
+  grid-template-columns: 1.35fr 1fr;
+  /* grid-auto-rows: 1fr forces both columns to share the tallest row height
+     so bridge-compact and sponsor balance visually. */
+  grid-auto-rows: 1fr;
+  align-items: stretch;
+  gap: 16px;
+  margin: 0 0 36px;
+}
+.promote-card {
+  position: relative;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 26px 28px;
+  background: var(--surface-cell);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow: hidden;
+}
+
+/* Bridge — the active card. Paper-on-paper layered tint (no flat radial),
+   accent edge rule on top, a hand-drawn corner arrow as decorative
+   identifier. Reads as «do this next». */
+.promote-card.bridge {
+  background:
+    linear-gradient(180deg, var(--accent-tint) 0%, transparent 38%, transparent 100%),
+    linear-gradient(180deg, var(--surface-dominant) 0%, var(--surface-cell) 100%);
+  border-color: color-mix(in srgb, var(--accent) 30%, var(--line));
+  box-shadow: var(--depth-edge-accent);
+  /* Allow .mc-disabled-tooltip (positioned -bottom: calc(100% + 10px) above
+     the Copy button) to escape the card's rounded corner. Canonical default
+     is overflow: hidden but here it physically clips a popover that needs
+     to render above adjacent content. The gradient is a background paint,
+     so it stays inside the box regardless of overflow setting. */
+  overflow: visible;
+}
+.promote-card.bridge::after {
+  content: "↗";
+  position: absolute;
+  top: 18px; right: 22px;
+  font-family: var(--display);
+  font-size: 32px;
+  font-weight: 300;
+  color: color-mix(in srgb, var(--accent) 60%, transparent);
+  line-height: 1;
+  pointer-events: none;
+}
+
+/* Sponsor — the passive card. Recedes into paper plane, mono caption,
+   no gradient, no decoration. Reads as «for your reference». */
+.promote-card.sponsor {
+  background: var(--surface-quiet);
+  border: 1px dashed var(--line-strong);
+}
+
+.promote-kicker {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+.promote-kicker .step {
+  background: var(--orange-600);
+  color: var(--paper);
+  padding: 3px 9px;
+  border-radius: 99px;
+  font-size: 9.5px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+}
+.promote-card.sponsor .promote-kicker {
+  color: var(--ink-4);
+}
+.promote-card.sponsor .promote-kicker .step {
+  background: transparent;
+  color: var(--ink-3);
+  border: 1px solid var(--line-strong);
+  font-weight: 500;
+}
+.promote-title {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: var(--t-display-4);
+  line-height: 1.06;
+  letter-spacing: -0.028em;
+  color: var(--ink);
+  padding-right: 48px;
+}
+.promote-card.sponsor .promote-title {
+  font-size: 24px;
+  padding-right: 0;
+  color: var(--ink-2);
+  font-weight: 350;
+}
+.promote-lede {
+  margin: 0;
+  font-size: 14px;
+  color: var(--ink-2);
+  line-height: 1.55;
+  max-width: 56ch;
+}
+.promote-lede a {
+  color: var(--accent-ink);
+  font-weight: 500;
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 35%, transparent);
+  text-underline-offset: 2px;
+}
+.promote-lede strong { color: var(--ink); font-weight: 600; }
+.promote-lede code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+  background: var(--paper-2);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  border: 1px solid var(--line);
+}
+.promote-action {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-top: auto;
+}
+
+.btn {
+  appearance: none;
+  font-family: var(--sans);
+  font-size: 13.5px;
+  font-weight: 500;
+  padding: 10px 16px;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px;
+  border: 1px solid transparent;
+  text-decoration: none;
+  transition: transform 100ms ease, background 100ms ease, box-shadow 120ms ease;
+  letter-spacing: -0.005em;
+}
+.btn:active { transform: translateY(1px); }
+.btn:disabled,
+.btn[disabled] {
+  background: color-mix(in srgb, var(--ink-3) 85%, var(--ink-4));
+  color: color-mix(in srgb, var(--paper) 85%, transparent);
+  border-color: transparent;
+  box-shadow: none;
+  cursor: not-allowed;
+  opacity: 0.7;
+}
+.btn:disabled:hover,
+.btn[disabled]:hover { background: color-mix(in srgb, var(--ink-3) 85%, var(--ink-4)); transform: none; }
+.btn-solid {
+  background: var(--ink);
+  color: var(--paper);
+  box-shadow: 0 1px 0 var(--ink), 0 2px 6px rgba(26,22,16,0.18);
+}
+.btn-solid:hover { background: #000; }
+/* Filled with --orange-600, not --accent: white on #F77300 measures 2.84:1
+   and fails AA. #B85000 measures 5.02:1 with the same brand reading. */
+.btn-accent {
+  background: var(--orange-600);
+  color: var(--raised);
+  box-shadow: 0 1px 0 var(--accent-deep), 0 4px 10px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+.btn-accent:hover { background: var(--accent-deep); }
+.btn-ghost {
+  background: var(--raised);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.btn-ghost:hover { background: var(--paper-2); }
+.qbadge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 9px;
+  border-radius: 99px;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--success-soft);
+  color: var(--success-color);
+  border: 1px solid color-mix(in srgb, var(--success-color) 30%, transparent);
+}
+.qbadge::before {
+  content: "";
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+/* ─── Section tab bar (sticky, prominent) ──────────────── */
+.layout {
+  display: block;
+  margin-top: 0;
+}
+.rail {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  margin: 0 -36px 28px;
+  padding: 0 36px;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border-bottom: 1px solid var(--line);
+  box-shadow: 0 1px 0 var(--paper-2);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.rail::-webkit-scrollbar { display: none; }
+.rail-label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.2em;
+  color: var(--ink-4);
+  display: flex; align-items: center;
+  padding: 16px 22px 16px 0;
+  margin: 0;
+  border: 0;
+  border-right: 1px solid var(--line);
+  white-space: nowrap;
+}
+.rail a {
+  position: relative;
+  display: flex; align-items: baseline; gap: 10px;
+  padding: 16px 20px;
+  color: var(--ink-3);
+  text-decoration: none;
+  border: 0;
+  margin: 0;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  transition: color var(--motion-fast) var(--ease-edit);
+}
+.rail a::before {
+  content: "";
+  position: absolute;
+  left: 20px;
+  bottom: 9px;
+  width: 0;
+  height: 2px;
+  background: var(--accent);
+  transition: width var(--motion-base) var(--ease-edit);
+}
+.rail a:hover { color: var(--ink); }
+.rail a:hover::before { width: 16px; }
+.rail a.active {
+  color: var(--ink);
+  font-weight: 500;
+}
+.rail a.active::before {
+  width: calc(100% - 40px);
+}
+.rail-num {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+  color: var(--ink-4);
+  letter-spacing: -0.02em;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.rail a.active .rail-num { color: var(--accent); }
+
+.content { min-width: 0; }
+
+/* ─── Bento grid sections ─────────────────────────────── */
+.bento {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 16px;
+  margin: 0 0 56px;
+  scroll-margin-top: 80px;
+}
+/* The bento level is quieter than the loud spine on purpose — but quiet in
+   the SAME language, not a dialect. It reads the declared depth ladder one
+   rung below .lr-card/.lr-quiet (--depth-3) and carries .lr-quiet's padding,
+   so a bento cell and a loud card differ by elevation, never by vocabulary. */
+.cell {
+  position: relative;
+  background: var(--surface-cell);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--depth-2);
+  padding: 28px 30px;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+  transition: border-color var(--motion-fast) var(--ease-edit);
+}
+.cell.span-2 { grid-column: span 2; }
+.cell.span-3 { grid-column: span 3; }
+.cell.span-4 { grid-column: span 4; }
+.cell.span-6 { grid-column: span 6; }
+.cell.tall { min-height: 280px; }
+
+/* Dominant cell — the lede of its section. Reads first. Warmer paper
+   tone, a top accent rule, taller padding, and an enlarged title scale.
+   Use one per bento section, max. Anything more dilutes the hierarchy. */
+.cell.dominant {
+  background: var(--surface-dominant);
+  border-color: color-mix(in srgb, var(--accent) 22%, var(--line));
+  box-shadow: var(--depth-edge-accent), var(--depth-3);
+  padding: 32px 34px;
+}
+.cell.dominant > .cell-head { margin-bottom: 18px; }
+.cell.dominant .cell-title {
+  font-size: var(--t-display-4);
+  letter-spacing: -0.025em;
+}
+.cell.dominant .cell-label { color: var(--accent-ink); }
+.cell.dominant.editor {
+  background: var(--editor-tint);
+  border-color: color-mix(in srgb, var(--editor) 22%, var(--line));
+  box-shadow: var(--depth-edge-editor), var(--depth-3);
+}
+.cell.dominant.editor .cell-label { color: var(--editor-ink); }
+
+/* Quiet cell — reference/footnote data. Reads last, but it is still a CARD:
+   it recedes by carrying less elevation than its dominant sibling, never by
+   being painted the colour of the page. A container the colour of the page
+   reads as un-styled space, which is why the loud register's own quiet card
+   (.lr-quiet) keeps --raised and only drops its padding. */
+.cell.quiet {
+  background: var(--surface-cell);
+  border-color: var(--line);
+}
+
+/* Inset cell — for data tables / matrix grids. Slightly toned surface
+   that signals "this is a working surface, not a card with a story". */
+.cell.inset {
+  background: var(--surface-inset);
+  border-color: var(--line);
+}
+
+.cell.dark {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  /* Don't stretch to match a tall sibling cell's height — size to own
+     content. Otherwise a short ranked list ends up in a giant black void
+     next to the radar grid. */
+  align-self: start;
+}
+.cell.dark .cell-label { color: var(--ink-4); }
+.cell.dark .cell-title { color: var(--paper); }
+
+/* Section overline — sits at the top of each .bento section as the lede.
+   Reads as editorial chapter intro: serif numeral, mono kicker, optional
+   hand-off line to next section. Establishes narrative chain through the
+   report. Spans the full 6-column bento grid via grid-column. No .cell
+   chrome (background/border/radius) — it's a divider, not a card. */
+.section-overline {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: end;
+  gap: 22px;
+  padding: 8px 6px 18px;
+  margin: 0;
+  border-bottom: 1px solid var(--line);
+  background: transparent;
+  overflow: visible;
+}
+.section-overline .so-numeral {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: 56px;
+  line-height: 0.8;
+  letter-spacing: -0.04em;
+  color: var(--accent);
+  font-feature-settings: "lnum", "tnum";
+}
+.section-overline .so-body {
+  display: flex; flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding-bottom: 6px;
+}
+.section-overline .so-kicker {
+  font-family: var(--mono);
+  font-size: var(--t-overline);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+}
+.section-overline .so-question {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 350;
+  font-size: 24px;
+  line-height: 1.18;
+  letter-spacing: -0.018em;
+  color: var(--ink);
+}
+.section-overline .so-question em {
+  font-style: italic;
+  font-weight: 400;
+  color: var(--editor);
+}
+.section-overline .so-handoff {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  text-align: right;
+  padding-bottom: 6px;
+}
+.section-overline .so-handoff::before {
+  content: "→ ";
+  color: var(--accent);
+  font-weight: 600;
+}
+
+@media (max-width: 760px) {
+  .section-overline {
+    grid-template-columns: auto 1fr;
+    gap: 14px;
+  }
+  .section-overline .so-handoff {
+    grid-column: 1 / -1;
+    text-align: left;
+    padding-bottom: 0;
+  }
+  .section-overline .so-numeral { font-size: 44px; }
+  .section-overline .so-question { font-size: 20px; }
+}
+
+.cell-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+/* Cell eyebrow — same atom as .lr-eyebrow (sans, --t-overline, 600, .04em).
+   Colour deliberately stays --ink-4 (4.7:1) rather than adopting the loud
+   eyebrow's --text-tertiary (2.23:1): this pass raises the legacy register,
+   and re-tinting a label paler would move it the wrong way. */
+.cell-label {
+  font-family: var(--sans);
+  font-size: var(--t-overline);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
+  display: flex; align-items: center; gap: 8px;
+}
+/* Sits inside .cell-label and must stay exactly one step below it. That was
+   10.5 → 9.5 while the label was mono; the label is now 12px sans, so this
+   follows to 11px rather than widening the gap to 2.5px. The font-family is
+   inherited now but kept explicit on purpose: the pill should not silently
+   change face if the label's ever does. */
+.cell-label .merge {
+  font-family: var(--sans);
+  font-size: 11px;
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  padding: 1.5px 6px;
+  border-radius: 99px;
+  letter-spacing: 0.06em;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, transparent);
+  font-weight: 500;
+  text-transform: none;
+}
+.cell-title {
+  margin: 0 0 4px;
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: var(--t-display-5);
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+  color: var(--ink);
+}
+.cell-sub {
+  margin: 0 0 16px;
+  font-size: 12.5px;
+  color: var(--ink-3);
+  max-width: 60ch;
+}
+.cell-action {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  text-decoration: none;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.cell-action:hover { color: var(--accent-ink); }
+.cell-action::after {
+  content: "→";
+  transition: transform 120ms ease;
+}
+.cell-action:hover::after { transform: translateX(2px); }
+/* Non-clickable variant — used when the label is a static count (e.g.
+   "All N domains") not a link. Removes the hover color + arrow affordance
+   so the atom reads as a legend, not a CTA. */
+.cell-action--info { cursor: default; }
+.cell-action--info:hover { color: var(--ink-3); }
+.cell-action--info::after { content: none; }
+
+.cell-body {
+  flex: 1;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  min-height: 0;
+}
+
+/* Placeholder cell — keeps section header + rail nav continuous when a
+   section has no data on the current run. Dashed border + italic copy
+   distinguishes it from a real cell without leaving a gap. */
+.cell-empty {
+  background: var(--paper-2);
+  border-style: dashed;
+  border-color: var(--line-strong);
+  color: var(--ink-3);
+  font-size: 13px;
+  font-style: italic;
+  text-align: center;
+  display: flex; align-items: center; justify-content: center;
+  min-height: 100px;
+  padding: 28px 24px;
+  line-height: 1.55;
+}
+
+/* Empty-callout — universal explicit empty-state hint card. Replaces the
+   dash-as-empty antipattern. A small mono label («how», «next», «todo»)
+   plus a code/example snippet inside the otherwise quiet cell. */
+.empty-callout {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  background: var(--surface-inset);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.empty-callout-tag {
+  display: inline-flex;
+  align-self: flex-start;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--editor-ink);
+  background: var(--editor-tint);
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-weight: 600;
+}
+.empty-callout-code {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--ink-2);
+  background: transparent;
+  padding: 0;
+  border: 0;
+  word-break: break-all;
+  line-height: 1.4;
+}
+
+/* UTM-empty variant — when no tracker configured, neutralize big-num
+   weight from the surrounding cell so the empty-callout reads as the
+   primary content. */
+.cell.utm-empty .cell-title { color: var(--ink-2); }
+
+/* ─── Big number block ─────────────────────────────────── */
+/* The report's big figures answer to .lr-kpi-num, which is 600 with tight
+   tracking. The old 250 was a Fraunces-era hairline that Geist clamps to
+   300 (its lightest axis stop), which is why the bento numbers read faint
+   beside the hero KPIs. Tracking eases -0.04em → -0.03em because the extra
+   weight closes the counters that the tighter value used to compensate for. */
+.big-num {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 76px;
+  letter-spacing: -0.03em;
+  line-height: 0.92;
+  font-variant-numeric: tabular-nums;
+}
+.big-num.bad { color: var(--error-color-strong); }
+.big-num.good { color: var(--success-color); }
+.big-num.warn { color: var(--orange-600); }
+.big-num small {
+  font-size: 24px; color: var(--ink-3); margin-left: 2px; font-weight: 300;
+}
+/* big-num sizes — data-size variants. Centralises type ramp so cell
+   markup doesn't carry inline font-size declarations. */
+.big-num[data-size="36"]      { font-size: 36px; }
+.big-num[data-size="36"] small{ font-size: 14px; }
+.big-num[data-size="56"]      { font-size: 56px; line-height: 0.92; }
+.big-num[data-size="56"] small{ font-size: 20px; }
+.big-num[data-size="64"]      { font-size: 64px; line-height: 0.92; }
+.big-num[data-size="64"] small{ font-size: 22px; }
+.big-num.utm-num {
+  color: var(--ink-2);
+  margin-top: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Ratio block — two-tier hierarchy for KPI cells showing «N of M».
+   Main numeral dominates; denominator + context stack as marginalia on
+   the right. Replaces the «count + small fraction tag» antipattern
+   where the small fraction tag competed with the main number for weight. */
+.ratio {
+  display: inline-flex;
+  align-items: flex-start;
+  gap: 12px;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.ratio-main {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 64px;
+  line-height: 0.88;
+  letter-spacing: -0.04em;
+  color: var(--ink);
+}
+.ratio.bad  .ratio-main { color: var(--error-color-strong); }
+.ratio.warn .ratio-main { color: var(--orange-600); }
+.ratio.good .ratio-main { color: var(--success-color); }
+.ratio[data-tone="good"]  .ratio-main { color: var(--success-color); }
+.ratio[data-tone="warm"]  .ratio-main { color: var(--accent); }
+.ratio[data-tone="muted"] .ratio-main { color: var(--ink-3); }
+
+/* Inline CLI-flag — --geo / --depth etc. in copy/sub. Pill-shape mono
+   chip matched to .empty-callout-tag visual weight. */
+.inline-flag {
+  display: inline-block;
+  font-family: var(--mono);
+  font-size: 11px;
+  background: var(--paper-2);
+  color: var(--ink-2);
+  padding: 1.5px 7px;
+  border-radius: 99px;
+  border: 1px solid var(--line);
+  letter-spacing: 0;
+  vertical-align: baseline;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.ratio-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  align-self: flex-end;
+  padding-bottom: 8px;
+  min-width: 0;
+}
+.ratio-denom {
+  font-family: var(--mono);
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-2);
+  letter-spacing: 0;
+}
+.ratio-context {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+
+/* ─── Engine cards ─────────────────────────────────────────
+   Visual language shared verbatim with the portal's report-v2 card
+   (webappka ai-visibility-report.component.scss:659-722): a flat bordered
+   tile identified by a 3px colour bar along its top edge, NOT a raised
+   card with a shadow. The bar is the engine's own colour and is the only
+   chrome the tile needs — a shadow on top of it made four tiles read as
+   four competing cards instead of one row. */
+.eng-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+}
+.eng-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+  border-top: 3px solid var(--c, var(--accent));
+}
+.eng-card-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.eng-name {
+  font-size: 14.5px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.eng-model {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+}
+.eng-pct {
+  font-size: 30px;
+  font-weight: 600;
+  letter-spacing: -1px;
+  color: var(--ink);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.eng-pct sup {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--ink-4);
+  margin-left: 1px;
+}
+.eng-bar {
+  height: 6px;
+  border-radius: 999px;
+  background: var(--paper-2);
+  margin: 12px 0 10px;
+  overflow: hidden;
+}
+.eng-bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--c, var(--accent));
+  width: var(--w, 0%);
+}
+.eng-meta {
+  display: flex; justify-content: space-between;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink-4);
+}
+
+/* ─── Matrix (Query × engine) ───────────────────────────────
+   Visual language shared verbatim with the portal's report-v2 matrix
+   (webappka ai-visibility-report.component.scss:724-999). Cells are flat
+   46px tiles inside one rounded bordered frame; status is carried by fill
+   + a single glyph, never by a repeated word. Class names match the portal
+   (named/cited/competitor/empty/absent/err) so one vocabulary describes
+   both surfaces.
+
+   What is OURS and has no portal equivalent, kept deliberately:
+     - .mx-v view-spans. This is a static file with no framework to re-render
+       on toggle, so all three views ship in the DOM and CSS reveals one.
+     - the position/sentiment view treatments below.
+     - a legend that decodes all SIX states the grid can draw. The portal's
+       legend lists three while its own grid draws six, so copying it would
+       have imported a legend that misdescribes the table under it. */
+
+/* Toggle — segmented control on a tertiary well. */
+.matrix-toggle {
+  display: inline-flex;
+  background: var(--paper-2);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.matrix-toggle button {
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ink-2);
+  padding: 5px 11px;
+  border-radius: 6px;
+}
+.matrix-toggle button:hover { color: var(--ink); }
+.matrix-toggle button[aria-pressed="true"] {
+  background: var(--raised);
+  color: var(--ink);
+  box-shadow: var(--shadow-card-sm);
+}
+
+/* Summary strip — ONE bordered band holding inline stats. Not one chip per
+   stat: the band is the object, the stats are its contents. */
+.mx-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  align-items: baseline;
+  margin: 16px 0 4px;
+  padding: 12px 14px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.mx-sum-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+}
+.mx-sum-num {
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.mx-sum-stat[data-tone="editor"] .mx-sum-num { color: var(--accent); }
+.mx-sum-stat[data-tone="bad"]    .mx-sum-num { color: var(--error-color); }
+.mx-sum-denom {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--ink-4);
+}
+.mx-sum-label {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+/* Grid — one rounded frame, hairline-separated tiles, horizontally
+   scrollable on narrow viewports rather than crushed. */
+.matrix { margin-top: 14px; overflow-x: auto; }
+.matrix-grid {
+  display: grid;
+  min-width: 520px;
+  grid-template-columns: 1.4fr repeat(var(--cols, 3), 1fr) auto;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+.mx-h {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  padding: 10px 12px;
+  background: var(--paper-2);
+  border-bottom: 1px solid var(--line);
+}
+.mx-h.eng { color: var(--c, var(--ink-2)); }
+.mx-h-total { text-align: center; }
+
+/* Query column */
+.mx-q {
+  font-size: 13px;
+  color: var(--ink);
+  padding: 12px;
+  border-bottom: 1px solid var(--line);
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+}
+.mx-q .qpre {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--accent);
+  flex-shrink: 0;
+}
+.mx-q .qrest { min-width: 0; }
+
+/* Cell — base tile */
+.mx-c {
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  min-height: 46px;
+  font-size: 12.5px;
+  font-weight: 600;
+  min-width: 0;
+}
+/* Fill is --orange-600, NOT --accent. White on #F77300 measures 2.84:1 and
+   is barred by the stylesheet's own contrast contract (test/loud-components
+   "white text never sits on … the accent orange"); #B85000 measures 5.02:1.
+   Same role, same read — the named tile is still the loudest cell in the
+   grid — at a contrast a printed client deliverable can carry. */
+.mx-c.named  { background: var(--orange-600); color: #fff; }
+.mx-c.cited  { background: var(--accent-wash); color: var(--accent); }
+.mx-c.absent { background: transparent; color: var(--ink-4); }
+/* Placeholder for ANY view whose span carries nothing — not just .absent.
+   Sentiment is only ever scored for named/cited cells, so a competitor or
+   empty cell has an empty sentiment span in every report; Position is empty
+   for a competitor cell that cited nothing. Without this those tiles render
+   blank and read as a rendering failure rather than as "no data here".
+   Scoped to :empty so it can never double up on a span that has content. */
+.mx-c .mx-v:empty::after {
+  content: '·';
+  color: var(--line-strong);
+  font-size: 18px;
+  line-height: 1;
+}
+.mx-c.err { background: rgba(255, 77, 79, 0.1); }
+.mx-c.err span {
+  font-size: 10px;
+  color: var(--error-color);
+}
+.mx-c[tabindex]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  position: relative;
+  z-index: 1;
+}
+
+/* View-spans — this file has no framework to re-render on toggle, so all
+   three views ship and CSS reveals whichever [data-view] selects. */
+.mx-c .mx-v { display: none; }
+.matrix-grid[data-view="mention"]   .mx-c .mx-v-mention,
+.matrix-grid[data-view="position"]  .mx-c .mx-v-position,
+.matrix-grid[data-view="sentiment"] .mx-c .mx-v-sentiment {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+/* Competitor / empty cells — transparent, content-bearing */
+.mx-c.competitor,
+.mx-c.empty {
+  background: transparent;
+  padding: 6px 8px;
+  font-weight: 500;
+}
+.mx-comp {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--ink-2);
+}
+.mx-c.competitor .mx-comp::before {
+  content: '↳';
+  color: var(--text-tertiary);
+  margin-right: 2px;
+}
+.mx-comp-prefix {
+  font-size: 9.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.mx-comp-name {
+  display: inline-block;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  vertical-align: bottom;
+  font-weight: 600;
+  color: var(--ink);
+}
+.mx-comp-more {
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--accent);
+  margin-left: 1px;
+}
+.mx-cited-share {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--ink-4);
+  white-space: nowrap;
+}
+.mx-c .mx-cited-share::before {
+  content: '○';
+  margin-right: 3px;
+  color: var(--text-tertiary);
+}
+
+/* Position view — the rank number reads as data, so it keeps a mono face
+   and lining figures rather than the tile's default weight. */
+.mx-pos {
+  font-family: var(--mono);
+  font-size: 15px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums lining-nums;
+  letter-spacing: -0.01em;
+  line-height: 1;
+  color: inherit;
+}
+
+/* Sentiment view — dot + word, tinted by tone. */
+.mx-v-sentiment { font-size: 11.5px; }
+.mx-sent-dot {
+  display: inline-block;
+  font-size: 13px;
+  line-height: 1;
+  color: currentColor;
+}
+.mx-sent-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: lowercase;
+}
+.mx-c.named .mx-v-sentiment,
+.mx-c.named .mx-sent-label { color: #fff; }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="pos"],
+.mx-c:not(.named) .mx-v-sentiment[data-tone="pos"] .mx-sent-label { color: var(--success-color); }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="neg"],
+.mx-c:not(.named) .mx-v-sentiment[data-tone="neg"] .mx-sent-label { color: var(--error-color-strong); }
+.mx-c:not(.named) .mx-v-sentiment[data-tone="flat"]    { color: var(--ink-3); }
+/* --ink-4, not --text-tertiary: this tone renders the WORD "unscored", and
+   the three sibling tones above all resolve to a legible colour. Reachable
+   whenever one cited cell fails classification while another in the same run
+   succeeds — invisible under --replay, which nulls every cell and hands the
+   grid to the sentiment-empty panel instead. */
+.mx-c:not(.named) .mx-v-sentiment[data-tone="missing"] { color: var(--ink-4); }
+
+/* Row Σ column */
+.mx-c-total {
+  border-bottom: 1px solid var(--line);
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  min-height: 46px;
+  padding: 0 12px;
+  background: var(--paper-2);
+}
+.mx-c-total[data-tone="good"] { background: var(--accent-wash); }
+.mx-row-num {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink-4);
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.mx-c-total[data-tone="good"] .mx-row-num { color: var(--accent); }
+.mx-row-den {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  line-height: 1;
+}
+
+/* Sentiment empty-state */
+.mx-sentiment-empty {
+  display: none;
+  margin-top: 14px;
+  padding: 18px 16px;
+  text-align: center;
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  background: var(--paper-2);
+}
+.matrix[data-view="sentiment"][data-sentiment-scored="0"] .matrix-grid { display: none; }
+.matrix[data-view="sentiment"][data-sentiment-scored="0"] ~ .mx-sentiment-empty { display: block; }
+.mx-empty-glyph {
+  display: block;
+  font-size: 22px;
+  color: var(--text-tertiary);
+  margin-bottom: 6px;
+}
+.mx-empty-title {
+  display: block;
+  font-size: 14px;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.mx-empty-body {
+  margin: 0 auto;
+  max-width: 460px;
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* Legend — the portal's swatch row, carrying ALL SIX states this grid can
+   draw. Each swatch is a miniature of the cell it decodes: same fill, same
+   glyph, so the mapping needs no explaining. */
+.mx-legend { display: none; }
+.matrix[data-view="mention"]   ~ .mx-legend[data-view-show="mention"],
+.matrix[data-view="position"]  ~ .mx-legend[data-view-show="position"],
+.matrix[data-view="sentiment"] ~ .mx-legend[data-view-show="sentiment"] {
+  display: flex;
+}
+.matrix-legend {
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.matrix-legend .lg {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.matrix-legend .sw {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+  color: var(--text-tertiary);
+}
+.lg[data-status="named"]      .sw { background: var(--orange-600); color: #fff; font-size: 9px; font-weight: 700; }
+.lg[data-status="cited"]      .sw { background: var(--accent-wash); border: 1px solid rgba(247,115,0,0.22); }
+.lg[data-status="competitor"] .sw { background: transparent; border: 1px solid var(--line); font-size: 10px; }
+.lg[data-status="empty"]      .sw { background: transparent; border: 1px solid var(--line); font-size: 8px; }
+.lg[data-status="absent"]     .sw { background: transparent; border: 1px solid var(--line); font-size: 15px; }
+.lg[data-status="error"]      .sw { background: rgba(255,77,79,0.1); border: 1px solid rgba(255,77,79,0.25); }
+.mx-leg-caption {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.mx-leg-caption strong { font-weight: 600; color: var(--ink); }
+
+/* ─── Stippled chart (sparkline / domains bar) ────────── */
+.chart {
+  width: 100%;
+  display: block;
+}
+.chart-grid {
+  stroke: var(--line);
+  stroke-dasharray: 1 4;
+  stroke-width: 1;
+}
+.chart-baseline {
+  stroke: var(--line-strong);
+  stroke-width: 1;
+}
+.chart-axis {
+  font-family: var(--mono);
+  font-size: 10px;
+  fill: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+.chart-axis-baseline {
+  fill: var(--ink-3);
+  font-weight: 600;
+}
+.chart-line {
+  stroke: var(--accent);
+  stroke-width: 1.75;
+  fill: none;
+}
+.chart-fill {
+  fill: var(--accent);
+  fill-opacity: 0.10;
+}
+.chart-dot {
+  fill: var(--accent);
+}
+.chart-anno {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  fill: var(--ink-3);
+  font-weight: 500;
+}
+.chart-anno-num {
+  fill: var(--accent);
+  font-weight: 700;
+  font-size: 13px;
+}
+.chart-anno-label {
+  fill: var(--ink-4);
+  font-weight: 500;
+}
+.chart-leader {
+  stroke: var(--ink-4);
+  stroke-width: 0.5;
+  stroke-dasharray: 2 2;
+}
+
+/* Domains bar — label-above-bar layout. The previous in-bar overlay (with
+   mix-blend-mode) cut letters across the fill/track boundary; the new pattern
+   stacks the hostname on its own row above a plain 8px bar. Reads cleanly on
+   any fill colour and matches how shadcn / Linear / Vercel ship progress
+   metrics. Apply this same shape anywhere a labelled progress-bar appears. */
+.dom-row {
+  position: relative;
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--competitor) 9%, transparent) 0%,
+      color-mix(in srgb, var(--competitor) 9%, transparent) var(--w-norm, 0%),
+      transparent var(--w-norm, 0%),
+      transparent 100%);
+  border-radius: var(--r-sm);
+  margin: 2px -10px;
+  display: grid;
+  grid-template-columns: 1fr 56px;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: 13px;
+}
+.dom-row:last-child { border-bottom: 0; }
+.dom-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.dom-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dom-bar {
+  position: relative;
+  height: 6px;
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.dom-bar::after {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: var(--w-norm, 0%);
+  /* Competitor by default («не ты»); .owned overrides to brand orange.
+     Width is normalized vs top-1 share so the bar reads as a rank-fraction,
+     not as «raw % of total» (which makes everything look invisibly small). */
+  background: var(--competitor);
+  border-radius: 99px;
+}
+.dom-row.owned {
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 14%, transparent) var(--w-norm, 0%),
+      transparent var(--w-norm, 0%),
+      transparent 100%);
+}
+.dom-row.owned .dom-bar::after { background: var(--you); }
+
+/* Topic cluster rows — same density-tint pattern as dom-row but with the
+   .lead modifier highlighting the dominant cluster in accent. */
+.cluster-row {
+  position: relative;
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--ink-3) 7%, transparent) 0%,
+      color-mix(in srgb, var(--ink-3) 7%, transparent) var(--w-norm, 0%),
+      transparent var(--w-norm, 0%),
+      transparent 100%);
+  border-radius: var(--r-sm);
+  padding: 6px 10px 8px;
+  margin: 2px -10px;
+  display: grid;
+  grid-template-columns: 1fr 52px;
+  gap: 14px;
+  align-items: center;
+}
+.cluster-row.lead {
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 14%, transparent) var(--w-norm, 0%),
+      transparent var(--w-norm, 0%),
+      transparent 100%);
+}
+.cluster-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cluster-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cluster-row.lead .cluster-name { color: var(--accent-ink); font-weight: 600; }
+.cluster-bar {
+  position: relative;
+  height: 4px;
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.cluster-bar::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: var(--w-norm, 0%);
+  background: var(--ink-3);
+  border-radius: 99px;
+}
+.cluster-row.lead .cluster-bar::after { background: var(--accent); }
+.cluster-pct {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-2);
+  text-align: right;
+  align-self: center;
+}
+.cluster-pct small {
+  font-size: 9.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+  margin-left: 1px;
+}
+.cluster-row.lead .cluster-pct { color: var(--accent-ink); }
+
+/* Citation category rows — compact density-tint variant of cluster-row.
+   Single-line layout (label · thin bar · pct) for the narrow span-2 cell.
+   Lead category gets accent treatment, matching Topic clusters/Domain SOV
+   editorial language. */
+.cat-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 56px 44px;
+  gap: 12px;
+  align-items: center;
+  padding: 7px 10px;
+  margin: 2px -10px;
+  border-radius: var(--r-sm);
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--ink-3) 7%, transparent) 0%,
+      color-mix(in srgb, var(--ink-3) 7%, transparent) var(--w-norm, 0%),
+      transparent var(--w-norm, 0%),
+      transparent 100%);
+}
+.cat-row.lead {
+  background:
+    linear-gradient(90deg,
+      color-mix(in srgb, var(--accent) 14%, transparent) 0%,
+      color-mix(in srgb, var(--accent) 14%, transparent) var(--w-norm, 0%),
+      transparent var(--w-norm, 0%),
+      transparent 100%);
+}
+.cat-name {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  letter-spacing: 0;
+}
+.cat-row.lead .cat-name { color: var(--accent-ink); font-weight: 600; }
+.cat-bar {
+  position: relative;
+  height: 4px;
+  background: color-mix(in srgb, var(--line) 60%, transparent);
+  border-radius: 99px;
+  overflow: hidden;
+}
+.cat-bar::after {
+  content: "";
+  position: absolute; inset: 0;
+  width: var(--w-norm, 0%);
+  background: var(--ink-3);
+  border-radius: 99px;
+}
+.cat-row.lead .cat-bar::after { background: var(--accent); }
+.cat-pct {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-2);
+  text-align: right;
+}
+.cat-pct small {
+  font-size: 9.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+  margin-left: 1px;
+}
+.cat-row.lead .cat-pct { color: var(--accent-ink); }
+
+/* ─── Radar stats table (per-axis you/avg/Δ) ─── */
+.radar-stats {
+  margin-top: 14px;
+  display: flex; flex-direction: column;
+  font-family: var(--mono);
+  font-size: var(--t-meta);
+  border-top: 1px solid var(--line);
+}
+.radar-row {
+  display: grid;
+  grid-template-columns: 1fr 44px 44px 44px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  color: var(--ink-2);
+}
+.radar-row:last-child { border-bottom: 0; }
+/* Header row follows .lr-mono-table th: 11px uppercase. Colour stays --ink-4
+   rather than the loud table's --text-tertiary, for the reason given on
+   .cell-label above. */
+.radar-row.radar-head {
+  color: var(--ink-4);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.radar-axis { font-family: var(--sans); font-size: 15px; color: var(--ink); font-weight: 500; }
+.radar-row.radar-head .radar-axis,
+.radar-row.radar-head > span { font-family: var(--mono); }
+.radar-num { text-align: right; font-variant-numeric: tabular-nums; color: var(--ink); }
+.radar-num-avg { color: var(--ink-3); }
+.radar-delta {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.radar-delta.pos  { color: var(--success-color); }
+.radar-delta.neg  { color: var(--error-color-strong); }
+.radar-delta.flat { color: var(--ink-4); }
+.dom-pct {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+  text-align: right;
+  align-self: center;
+  font-weight: 500;
+  color: var(--ink-2);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ─── Competitor list — light variant (paper-2 quiet cell) ─
+   Replaces the v0.5 dark inversion. Top-1 (.comp-li.lead) gets accent
+   row-tint + accent name color + accent bar — the lede of the section,
+   read first. The rest stack as muted ink supporting data. */
+.comp-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 2px; }
+.comp-li {
+  display: grid;
+  grid-template-columns: 22px 1fr 110px 44px;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 10px;
+  margin: 0 -10px;
+  border-radius: var(--r-sm);
+  border-bottom: 1px dashed var(--line);
+}
+.comp-li:last-child { border-bottom: 0; }
+.comp-li.lead {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+}
+.comp-rank {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+  font-feature-settings: "tnum", "lnum";
+}
+.comp-li.lead .comp-rank { color: var(--accent-ink); font-weight: 600; }
+/* Same brands as .lr-share-row up in the loud part of the section, so they
+   answer to .lr-share-name (18px / 600). The lead row keeps its one-step
+   lift over the rest, which is why it moves 500 → 700 alongside the base. */
+.comp-name {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 18px;
+  letter-spacing: -0.012em;
+  color: var(--ink);
+}
+.comp-li.lead .comp-name { color: var(--accent-ink); font-weight: 700; }
+.comp-bar {
+  width: 100%;
+  height: 5px;
+  background: var(--line-soft);
+  border-radius: 99px;
+  position: relative;
+  overflow: hidden;
+}
+.comp-bar::after {
+  content: "";
+  position: absolute; inset: 0;
+  width: var(--w, 0%);
+  background: var(--competitor);
+  border-radius: 99px;
+}
+.comp-li.lead .comp-bar { background: color-mix(in srgb, var(--accent) 14%, var(--paper)); }
+.comp-li.lead .comp-bar::after { background: var(--accent); }
+.comp-count {
+  font-family: var(--mono);
+  font-size: 17px;
+  font-weight: 600;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink-2);
+  text-align: right;
+}
+.comp-count small {
+  font-size: 9px;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--ink-4);
+  margin-left: 2px;
+}
+.comp-li.lead .comp-count { color: var(--accent-ink); }
+.comp-li.lead .comp-count small { color: color-mix(in srgb, var(--accent) 55%, var(--ink-3)); }
+/* ─── Action stack ─────────────────────────────────────── */
+.act { display: flex; flex-direction: column; gap: 12px; }
+.act-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  gap: 18px;
+  align-items: start;
+  padding: 22px 26px 22px 28px;
+  background: var(--surface-cell);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--depth-2);
+  overflow: hidden;
+}
+/* Priority marker — a coloured rule on the left edge of the row. Replaces
+   the textual «High» badge that read as a 2018 SaaS pattern. Colour
+   encodes priority at a glance: high → bad (red), med → warn (amber),
+   low → ink-4 (neutral). The data-prio attribute drives the colour. */
+.act-row::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 4px;
+  background: var(--prio-c, var(--ink-4));
+}
+.act-row[data-prio="high"] { --prio-c: var(--error-color-strong); }
+.act-row[data-prio="med"]  { --prio-c: var(--orange-600); }
+.act-row[data-prio="low"]  { --prio-c: var(--ink-4); }
+
+.act-num {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 38px;
+  color: var(--accent);
+  line-height: 0.9;
+  letter-spacing: -0.04em;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+  padding-top: 2px;
+}
+.act-body { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+/* Section 06 is what the client pays for, so its rows are set at the same
+   scale as .lr-h3 / .lr-body rather than a step below everything above them. */
+.act-title {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 20px;
+  letter-spacing: -0.014em;
+  line-height: 1.28;
+  color: var(--ink);
+  margin: 0;
+}
+.act-detail {
+  font-size: var(--t-body);
+  color: var(--ink-2);
+  line-height: 1.55;
+  margin: 2px 0 4px;
+}
+.act-meta {
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+/* Day chip — warm accent tint. Matches .empty-callout-tag treatment. */
+.act-meta .day {
+  background: var(--accent-tint);
+  color: var(--accent-ink);
+  padding: 3px 9px;
+  border-radius: 99px;
+  letter-spacing: 0.14em;
+  font-weight: 700;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+  font-size: 10px;
+}
+.act-kind {
+  color: var(--ink-4);
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  font-weight: 500;
+}
+
+/* Priority indicator — dot + mono label. Coloured by data-prio. */
+.act-prio {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--prio-c-self, var(--ink-4));
+  white-space: nowrap;
+  padding-top: 6px;
+  font-weight: 600;
+}
+.act-prio[data-prio="high"] { --prio-c-self: var(--error-color-strong); }
+.act-prio[data-prio="med"]  { --prio-c-self: var(--orange-600); }
+.act-prio[data-prio="low"]  { --prio-c-self: var(--ink-4); }
+.act-prio-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--prio-c-self, var(--ink-4));
+}
+
+/* Legacy class fallback — .act-prio.high still hits this. */
+.act-prio.high { color: var(--error-color-strong); }
+
+/* ─── Site readiness mini ─────────────────────────────── */
+/* Cost breakdown rows — engine name (coloured by --c) + USD. Replaces
+   the inline-style ready-row variant in cost cells. */
+.cost-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: 15px;
+}
+.cost-row.is-last { border-bottom: 0; }
+.cost-eng {
+  font-family: var(--mono);
+  font-size: var(--t-meta);
+  font-weight: 600;
+  color: var(--c, var(--ink-3));
+  letter-spacing: 0.04em;
+}
+.cost-usd {
+  font-family: var(--mono);
+  font-size: var(--t-meta);
+  font-weight: 500;
+  color: var(--ink-2);
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+.ready-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px dashed var(--line-soft);
+  font-size: 15px;
+}
+.ready-row:last-child { border-bottom: 0; }
+.ready-row .ck {
+  width: 14px; height: 14px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--success-soft);
+  color: var(--success-color);
+  font-size: 9px;
+  font-weight: 700;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+.ready-row .ck.bad { background: var(--error-soft); color: var(--error-color-strong); }
+.ready-row .ck.warn { background: var(--orange-soft); color: var(--orange-600); }
+/* Neutral marker for a row that reports a FACT with no pass/fail verdict
+   (llms.txt) — deliberately not green, amber or red. */
+.ready-row .ck.muted { background: var(--paper-2); color: var(--ink-3); }
+.ready-row .label { color: var(--ink); font-size: 15px; }
+.ready-row .meta { font-family: var(--mono); font-size: var(--t-meta); color: var(--ink-3); }
+
+/* ─── Quote figures (Visibility verbatim cell) ─── */
+.quote { margin: 12px 0 0; padding: 0; }
+.quote blockquote {
+  margin: 6px 0; padding: 12px 14px;
+  background: var(--paper-2); border-left: 3px solid var(--accent);
+  border-radius: var(--r-sm); color: var(--ink); font-size: 15px; line-height: 1.55;
+  font-family: var(--display); font-weight: 400;
+}
+.quote-meta {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--ink-3);
+}
+.engine-tag {
+  font-family: var(--mono); font-size: 10.5px; padding: 2px 7px; border-radius: var(--r-xs);
+  background: color-mix(in srgb, var(--eng, var(--ink-3)) 12%, var(--paper));
+  color: var(--eng, var(--ink));
+  border: 1px solid color-mix(in srgb, var(--eng, var(--ink-3)) 25%, transparent);
+}
+.quote-query { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
+
+/* ─── Historical trend block — sparkline + per-run tick row ─
+   Replaces v0.3 inline-styled slate hex (#f8fafc bg, #e2e8f0 border,
+   #64748b / #0f172a text, #15803d / #b91c1c delta). Lives in
+   sectionHistoricalTrend markdown output. */
+.trend-block {
+  margin: 16px 0;
+  padding: 18px 20px;
+  background: var(--surface-inset);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+}
+.trend-ticks {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 10px;
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.trend-tick {
+  text-align: center;
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+.trend-tick-val {
+  display: inline-block;
+  margin-top: 2px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--ink);
+  font-weight: 600;
+}
+.trend-delta {
+  font-family: var(--mono);
+  font-weight: 600;
+  color: var(--ink-3);
+  font-feature-settings: "tnum", "lnum";
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.trend-delta[data-tone="pos"]  { color: var(--success-color); }
+.trend-delta[data-tone="neg"]  { color: var(--error-color-strong); }
+.trend-delta[data-tone="flat"] { color: var(--ink-3); }
+
+/* ─── Crawlability — bot-access badges + file-check spans ──
+   Replaces v0.3 inline Tailwind palette in sectionCrawlability. tone
+   attribute drives colour through report tokens (good/bad/warn/muted). */
+.crawl-badge {
+  display: inline-block;
+  padding: 3px 10px;
+  margin: 2px 4px 2px 0;
+  border-radius: 99px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  background: var(--crawl-bg, var(--paper-2));
+  color: var(--crawl-fg, var(--ink-3));
+  border-color: var(--crawl-bd, var(--line));
+}
+.crawl-badge[data-tone="good"] {
+  --crawl-bg: color-mix(in srgb, var(--success-color) 12%, var(--paper));
+  --crawl-fg: var(--success-color);
+  --crawl-bd: color-mix(in srgb, var(--success-color) 28%, var(--line));
+}
+.crawl-badge[data-tone="bad"] {
+  --crawl-bg: color-mix(in srgb, var(--error-color-strong) 10%, var(--paper));
+  --crawl-fg: var(--error-color-strong);
+  --crawl-bd: color-mix(in srgb, var(--error-color-strong) 26%, var(--line));
+}
+.crawl-badge[data-tone="warn"] {
+  --crawl-bg: color-mix(in srgb, var(--orange-600) 14%, var(--paper));
+  --crawl-fg: var(--orange-600);
+  --crawl-bd: color-mix(in srgb, var(--orange-600) 30%, var(--line));
+}
+.crawl-badge[data-tone="muted"] {
+  --crawl-bg: var(--paper-2);
+  --crawl-fg: var(--ink-4);
+  --crawl-bd: var(--line);
+}
+
+.file-check {
+  font-weight: 600;
+  color: var(--file-c, var(--ink-3));
+}
+.file-check[data-tone="good"] { --file-c: var(--success-color); }
+.file-check[data-tone="bad"]  { --file-c: var(--error-color-strong); }
+.file-check-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0;
+}
+
+/* ─── Ads-detection samples — warn-tinted callouts ────────
+   Replaces v0.5 hardcoded Tailwind (#fef9c3 + #854d0e + #1e293b) with
+   report --warn tokens. Same pattern as .empty-callout and .outreach-why,
+   so all "highlighted aside" blocks share visual language. */
+.ads-sample {
+  margin: 10px 0;
+  padding: 12px 16px;
+  background: var(--orange-soft);
+  border-left: 3px solid var(--orange-600);
+  border-radius: var(--r-sm);
+}
+.ads-sample-meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  color: var(--orange-600);
+  font-weight: 700;
+  text-transform: lowercase;
+}
+.ads-sample-kind {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: color-mix(in srgb, var(--orange-600) 18%, var(--paper));
+  color: var(--orange-600);
+  padding: 1px 6px;
+  border-radius: var(--r-xs);
+  border: 1px solid color-mix(in srgb, var(--orange-600) 30%, transparent);
+  font-weight: 600;
+  margin-left: 2px;
+}
+.ads-sample-snip {
+  margin-top: 6px;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 350;
+  font-size: 13.5px;
+  line-height: 1.55;
+  color: var(--ink-2);
+}
+
+/* ─── Authority presence — status badges bound to tokens ──
+   Replaces v0.5 inline Tailwind palette (#fef9c3/#dcfce7/#fee2e2 + bright
+   sat colors) that outshone the warm-paper system. data-tone drives the
+   colour: good (article exists) / warn (disambiguation) / bad (missing). */
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 9px;
+  height: 22px;
+  border-radius: 99px;
+  font-family: var(--mono);
+  font-size: var(--t-meta);
+  letter-spacing: 0.04em;
+  font-weight: 600;
+  border: 1px solid transparent;
+  background: var(--badge-bg, var(--paper-2));
+  color: var(--badge-fg, var(--ink-3));
+  border-color: var(--badge-bd, var(--line));
+  /* Never wrap — a pill on two lines is not a pill, it's a rectangle. */
+  white-space: nowrap;
+  flex-shrink: 0;
+  line-height: 1;
+}
+/* Subtler tone backgrounds — v0.5 12-14% mix read close to Tailwind hex
+   on warm cream. 7-8% blend keeps the badge in the same paper-on-paper
+   visual register as the rest of the system. */
+.auth-badge[data-tone="good"] {
+  --badge-bg: color-mix(in srgb, var(--success-color) 8%, var(--paper));
+  --badge-fg: var(--success-color);
+  --badge-bd: color-mix(in srgb, var(--success-color) 24%, var(--line));
+}
+.auth-badge[data-tone="warn"] {
+  --badge-bg: color-mix(in srgb, var(--orange-600) 9%, var(--paper));
+  --badge-fg: var(--orange-600);
+  --badge-bd: color-mix(in srgb, var(--orange-600) 26%, var(--line));
+}
+.auth-badge[data-tone="bad"] {
+  --badge-bg: color-mix(in srgb, var(--error-color-strong) 7%, var(--paper));
+  --badge-fg: var(--error-color-strong);
+  --badge-bd: color-mix(in srgb, var(--error-color-strong) 22%, var(--line));
+}
+.auth-extract {
+  display: inline-block;
+  margin-top: 4px;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 350;
+  font-size: 14px;
+  color: var(--ink-3);
+  line-height: 1.5;
+}
+.auth-empty {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0.04em;
+}
+.auth-tips {
+  margin: 8px 0 0;
+  padding: 0 0 0 18px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--ink-2);
+}
+.auth-tips li {
+  list-style: none;
+  position: relative;
+  padding-left: 18px;
+  margin-bottom: 6px;
+}
+.auth-tips li:last-child { margin-bottom: 0; }
+.auth-tips li::before {
+  content: "◆";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--accent);
+  letter-spacing: 0;
+}
+
+/* Authority caveat — profile-specific framing note that sits between the
+   section intro and the table. De-weighted vs the intro so two adjacent
+   italic paragraphs don't compete: smaller, lighter ink, mono kicker. */
+.md-block .auth-caveat {
+  margin: 8px 0 14px;
+  font-family: var(--display);
+  font-style: italic;
+  font-weight: 350;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--ink-3);
+  padding: 8px 12px;
+  background: var(--surface-inset);
+  border-left: 2px solid var(--line-strong);
+  border-radius: var(--r-xs);
+}
+
+/* Authority advisory block — replaces the v0.5 <details> collapsible.
+   Same warn-tinted callout family as .empty-callout / .ads-sample so
+   advisory content shares one visual language across the report. */
+.auth-advisory {
+  margin-top: 14px;
+  padding: 14px 18px;
+  background: var(--surface-inset);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-sm);
+}
+.auth-advisory-head {
+  margin: 0 0 8px;
+  font-family: var(--mono);
+  font-size: var(--t-overline);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 700;
+}
+.auth-advisory .auth-tips {
+  margin-top: 0;
+}
+
+/* ─── Outreach drafts — editorial template cards ──────────
+   Replaces the v0.5 slate-Tailwind palette block (#fff/#e2e8f0/#f8fafc/
+   #fef9c3 + Georgia serif) that read as an embedded shadcn widget inside
+   the warm-cream report. Now bound to report tokens (--surface-cell,
+   --line, --display, --accent-tint), rendered static (no <details>
+   collapse — print-readable). */
+.outreach-item {
+  background: var(--surface-cell);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 22px 24px;
+  margin: 14px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.outreach-head {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px dashed var(--line);
+}
+.outreach-num {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: 28px;
+  line-height: 0.9;
+  color: var(--accent);
+  letter-spacing: -0.03em;
+  font-feature-settings: "tnum", "lnum";
+}
+.outreach-host {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 20px;
+  line-height: 1.1;
+  color: var(--ink);
+  letter-spacing: -0.018em;
+}
+.outreach-field {
+  display: grid;
+  grid-template-columns: 80px 1fr;
+  gap: 14px;
+  align-items: baseline;
+}
+.outreach-field-label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  font-weight: 600;
+  padding-top: 2px;
+}
+.outreach-field-value {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+  line-height: 1.4;
+  color: var(--ink);
+  letter-spacing: -0.008em;
+}
+.outreach-body {
+  font-family: var(--display);
+  font-weight: 350;
+  font-size: 14px;
+  line-height: 1.62;
+  color: var(--ink-2);
+  letter-spacing: -0.002em;
+  padding: 16px 18px;
+  background: var(--surface-inset);
+  border-radius: var(--r-sm);
+  border-left: 2px solid var(--accent-soft);
+}
+.outreach-why {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--accent-tint);
+  border-radius: var(--r-sm);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, transparent);
+}
+.outreach-why-tag {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-ink);
+  font-weight: 700;
+  padding-top: 2px;
+}
+.outreach-why-text {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--accent-ink);
+}
+@media (max-width: 760px) {
+  .outreach-field { grid-template-columns: 1fr; gap: 4px; }
+  .outreach-num { font-size: 24px; }
+  .outreach-host { font-size: 18px; }
+}
+
+/* ─── Section helpers — competitor intelligence / sentiment / domain SoV /
+   competitor radar / domain categories / funnel / actionable gaps / geo /
+   UVI / discoverability / topic clusters.
+   Replaces v0.3/v0.4/v0.5 inline-styled Tailwind hex palette in
+   sectionCompetitorIntelligence + sectionSentiment + sectionDomainShareOfVoice
+   + sectionCompetitorRadar + sectionDomainCategories + sectionFunnelBreakdown
+   + sectionActionableGaps + sectionGeoComparison +
+   sectionUnifiedVisibilityIndex + sectionDiscoverability +
+   sectionTopicClusters. data-tone drives colour through report tokens. */
+
+/* Compact pill badge used by competitor-intel / sentiment / actionable-gaps
+   markup. Same shape as .auth-badge but with smaller padding because cells
+   carry multiple per row. */
+.cell-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 99px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  background: var(--cb-bg, var(--paper-2));
+  color: var(--cb-fg, var(--ink-3));
+  border-color: var(--cb-bd, var(--line));
+}
+.cell-badge[data-tone="good"] {
+  --cb-bg: color-mix(in srgb, var(--success-color) 12%, var(--paper));
+  --cb-fg: var(--success-color);
+  --cb-bd: color-mix(in srgb, var(--success-color) 28%, var(--line));
+}
+.cell-badge[data-tone="bad"] {
+  --cb-bg: color-mix(in srgb, var(--error-color-strong) 10%, var(--paper));
+  --cb-fg: var(--error-color-strong);
+  --cb-bd: color-mix(in srgb, var(--error-color-strong) 26%, var(--line));
+}
+.cell-badge[data-tone="warn"] {
+  --cb-bg: color-mix(in srgb, var(--orange-600) 14%, var(--paper));
+  --cb-fg: var(--orange-600);
+  --cb-bd: color-mix(in srgb, var(--orange-600) 30%, var(--line));
+}
+/* "editor" tone = data context rather than a good/bad verdict — used by
+   Run Comparison for "never held" cells (not a decline, ground never taken;
+   see 00-STATUS.md's token decision) and mirrors the pre-existing
+   .mx-sum-stat[data-tone="editor"] mapping to the same --editor token. */
+.cell-badge[data-tone="editor"] {
+  --cb-bg: color-mix(in srgb, var(--editor) 12%, var(--paper));
+  --cb-fg: var(--editor);
+  --cb-bd: color-mix(in srgb, var(--editor) 28%, var(--line));
+}
+.cell-badge[data-tone="muted"] {
+  --cb-bg: var(--paper-2);
+  --cb-fg: var(--ink-4);
+  --cb-bd: var(--line);
+}
+
+/* Unverified-tier variant: only one of the two extractor models flagged this
+   brand as a competitor — README promises a dashed badge for this weaker
+   signal. Overrides the solid `data-tone` border with a dashed muted border
+   and softens the foreground so the chip reads as «surfaced honestly, but
+   weaker» rather than full-strength «pitch this competitor». Applied in
+   sectionActionableGaps for cells where the competitor came from
+   results[i].competitorsUnverified rather than results[i].competitors. */
+.cell-badge[data-unverified="1"] {
+  border-style: dashed;
+  --cb-bg: var(--paper-2);
+  --cb-fg: var(--ink-4);
+  --cb-bd: var(--line-strong);
+}
+.cell-badge-mark {
+  opacity: 0.65;
+  font-weight: 500;
+}
+
+/* Radar card — unverified competitor mention-count variant. Referenced from
+   sectionCompetitorRadar.radarMentionMeta when topCompetitors[i].verified ===
+   false (competitor only met the unverified-tier bar). Same editorial logic
+   as cell-badge[data-unverified]: dashed border + muted tone so the card
+   reads as «weaker signal» rather than full-strength verified count. */
+.radar-card-meta--unverified {
+  border-bottom: 1px dashed var(--line);
+  color: var(--ink-4);
+}
+.radar-card-unverified {
+  opacity: 0.7;
+  font-family: var(--mono);
+  font-size: 10px;
+  margin-left: 2px;
+}
+
+/* Competitor-intel table: editor-blue header strip + tone-tinted cells. */
+.cintel-table-wrap {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+.cintel-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.cintel-table th {
+  background: var(--editor);
+  color: var(--paper);
+  padding: 10px 14px;
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.cintel-table td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+  background: var(--paper);
+}
+.cintel-table tr:last-child td { border-bottom: 0; }
+.cintel-query {
+  font-size: 12.5px;
+  color: var(--ink-2);
+  font-weight: 500;
+}
+.cintel-cell[data-status="yes"],
+.cintel-cell[data-status="src"] {
+  background: color-mix(in srgb, var(--success-color) 6%, var(--paper));
+}
+.cintel-cell[data-status="missing"],
+.cintel-cell[data-status="error"] {
+  background: var(--surface-inset);
+}
+.cintel-cell[data-status="no"] {
+  background: color-mix(in srgb, var(--error-color-strong) 5%, var(--paper));
+}
+.cintel-comps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.cintel-comp {
+  background: color-mix(in srgb, var(--error-color-strong) 10%, var(--paper));
+  color: var(--error-color-strong);
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: var(--r-xs);
+  font-weight: 600;
+  border: 1px solid color-mix(in srgb, var(--error-color-strong) 24%, var(--line));
+  white-space: nowrap;
+}
+
+/* Sentiment table — confidence flag is a quiet muted note next to badge. */
+.sent-conf {
+  color: var(--ink-4);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+/* Domain share-of-voice + topic-cluster + funnel — single-bar primitive
+   bound to report tokens. tone drives colour, width inline via --bar-w. */
+.share-bar {
+  display: inline-block;
+  width: var(--bar-w, 50%);
+  max-width: 140px;
+  height: 8px;
+  border-radius: var(--r-xs);
+  vertical-align: middle;
+  background: var(--bar-c, var(--accent));
+}
+.share-bar[data-tone="good"]  { --bar-c: var(--success-color); }
+.share-bar[data-tone="warn"]  { --bar-c: var(--orange-600); }
+.share-bar[data-tone="bad"]   { --bar-c: var(--error-color-strong); }
+.share-bar[data-tone="muted"] { --bar-c: var(--ink-4); }
+
+/* Tone-tinted inline rate text used in funnel / UVI component / topic
+   cluster tables. Pairs with .share-bar. */
+.rate-text {
+  font-weight: 700;
+  color: var(--rate-c, var(--ink-2));
+}
+.rate-text[data-tone="good"]  { --rate-c: var(--success-color); }
+.rate-text[data-tone="warn"]  { --rate-c: var(--orange-600); }
+.rate-text[data-tone="bad"]   { --rate-c: var(--error-color-strong); }
+.rate-text[data-tone="muted"] { --rate-c: var(--ink-4); }
+
+/* Competitor radar — 2×2 grid of paper-toned cards with editor (user) or
+   muted (competitor) accent ring. */
+.radar-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 8px;
+  margin: 12px 0;
+}
+.radar-card {
+  text-align: center;
+  padding: 12px;
+  background: var(--paper-2);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  color: var(--ink-4);
+}
+.radar-card[data-tone="you"] {
+  background: var(--editor-tint);
+  border-color: var(--editor-soft);
+  color: var(--editor);
+}
+.radar-card-name {
+  font-family: var(--display);
+  font-weight: 500;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.radar-card-meta {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin-bottom: 8px;
+  letter-spacing: 0.04em;
+}
+
+/* Domain categories — "+N more" muted suffix. */
+.dom-more {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+/* Geo-comparison table — same shape as cintel-table but per-rate cell
+   tone-tinted with paper-backed dash for "no data". */
+.geo-table-wrap {
+  overflow-x: auto;
+  margin: 16px 0;
+}
+.geo-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+}
+.geo-table th {
+  padding: 8px 12px;
+  background: var(--editor);
+  color: var(--paper);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.geo-table th.geo-th-region { text-align: left; }
+.geo-table th.geo-th-engine { text-align: center; }
+.geo-table td { padding: 8px 12px; border-bottom: 1px solid var(--line-soft); }
+.geo-table tr:last-child td { border-bottom: 0; }
+.geo-region {
+  font-weight: 600;
+  color: var(--ink);
+}
+.geo-cell {
+  text-align: center;
+  font-weight: 700;
+}
+.geo-cell[data-tone="good"] {
+  background: color-mix(in srgb, var(--success-color) 10%, var(--paper));
+  color: var(--success-color);
+}
+.geo-cell[data-tone="warn"] {
+  background: color-mix(in srgb, var(--orange-600) 12%, var(--paper));
+  color: var(--orange-600);
+}
+.geo-cell[data-tone="bad"] {
+  background: color-mix(in srgb, var(--error-color-strong) 10%, var(--paper));
+  color: var(--error-color-strong);
+}
+.geo-cell[data-tone="muted"] {
+  background: var(--surface-inset);
+  color: var(--ink-4);
+}
+.geo-cell-frac {
+  display: block;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-weight: 400;
+  margin-top: 2px;
+}
+.geo-empty {
+  text-align: center;
+  color: var(--ink-4);
+}
+
+/* Composite score blocks (UVI + Discoverability) — paper-inset hero with
+   big tone-tinted numeral. Same surface as crawlability composite. */
+.score-block {
+  text-align: center;
+  padding: 20px;
+  background: var(--surface-inset);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+  margin: 16px 0;
+}
+.score-block-label {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* 600 is the report's heaviest numeral weight (.lr-kpi-num); this was the
+   only figure in the document set above it. */
+.score-block-num {
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 64px;
+  line-height: 1;
+  margin: 8px 0;
+  color: var(--score-c, var(--ink));
+  font-feature-settings: "tnum", "lnum";
+}
+.score-block-num[data-tone="good"]  { --score-c: var(--success-color); }
+.score-block-num[data-tone="warn"]  { --score-c: var(--orange-600); }
+.score-block-num[data-tone="bad"]   { --score-c: var(--error-color-strong); }
+.score-block-num[data-tone="muted"] { --score-c: var(--ink-4); }
+.score-block-frac {
+  font-family: var(--display);
+  font-size: 24px;
+  color: var(--ink-4);
+  font-weight: 600;
+}
+.score-block-verdict {
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--score-c, var(--ink));
+}
+.score-block-verdict[data-tone="good"]  { --score-c: var(--success-color); }
+.score-block-verdict[data-tone="warn"]  { --score-c: var(--orange-600); }
+.score-block-verdict[data-tone="bad"]   { --score-c: var(--error-color-strong); }
+.score-block-verdict[data-tone="muted"] { --score-c: var(--ink-4); }
+.score-block-meta {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+  margin-top: 6px;
+  letter-spacing: 0.04em;
+}
+
+/* Discoverability — horizontal variant with body copy on the side. */
+.score-block.score-block-row {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  padding: 16px 20px;
+  text-align: left;
+}
+.score-block-row .score-block-num {
+  font-size: 48px;
+  margin: 0;
+  flex-shrink: 0;
+}
+.score-block-row .score-block-frac {
+  font-size: 18px;
+}
+.score-block-row .score-block-body {
+  flex: 1;
+}
+.score-block-body-title {
+  font-weight: 700;
+  color: var(--ink);
+}
+.score-block-body-note {
+  font-size: 12.5px;
+  color: var(--ink-3);
+  margin-top: 4px;
+}
+
+/* ─── Embedded markdown panels (md-block) ─── */
+/* This panel carries "how the index is calculated" — the part of the report
+   that shows our working. It was the smallest body copy in the document. */
+.md-block { font-size: 15px; line-height: 1.6; color: var(--ink-2); }
+.md-block a {
+  color: var(--editor-ink);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--editor) 40%, transparent);
+  text-underline-offset: 2px;
+  text-decoration-thickness: 1px;
+}
+.md-block a:hover {
+  text-decoration-color: var(--editor);
+}
+.md-block h2 { display: none; }
+/* A subheading cannot be smaller than the body it introduces — this rule
+   follows .md-block's 13px → 15px move up to --t-display-6. */
+.md-block h3 {
+  font-family: var(--sans); font-size: var(--t-display-6); font-weight: 600;
+  color: var(--ink); margin: 14px 0 6px;
+}
+.md-block table {
+  width: 100%; border-collapse: collapse; margin: 8px 0;
+  font-family: var(--mono); font-size: var(--t-meta);
+}
+.md-block th {
+  text-align: left; padding: 6px 8px;
+  background: var(--paper-2); color: var(--ink-2);
+  font-family: var(--sans); font-size: 11px; font-weight: 600;
+  letter-spacing: 0.04em; text-transform: uppercase;
+  border-bottom: 1px solid var(--line);
+}
+.md-block td { padding: 6px 8px; border-bottom: 1px solid var(--line-soft); color: var(--ink-2); }
+.md-block tr:last-child td { border-bottom: 0; }
+.md-block code {
+  font-family: var(--mono); background: var(--paper-2);
+  padding: 1px 4px; border-radius: var(--r-xs); font-size: var(--t-meta);
+}
+.md-block details {
+  margin: 8px 0; padding: 10px 12px;
+  background: var(--paper-2); border: 1px solid var(--line); border-radius: var(--r-sm);
+}
+.md-block details summary { cursor: pointer; font-weight: 600; color: var(--ink); font-size: 15px; }
+
+/* ─── UVI calculation popover — «(ⓘ) How is this calculated?» ───
+   Native <details> sits right under the score block. Zero JS — keyboard
+   accessible via the disclosure widget's default Enter/Space toggle.
+   Click anywhere on the <summary> row or focus + Space to expand. */
+.md-block details.uvi-breakdown {
+  margin: 6px 0 14px;
+  padding: 10px 14px;
+  background: color-mix(in srgb, var(--paper-2) 80%, var(--paper) 20%);
+  border: 1px solid var(--line-soft);
+  border-radius: var(--r-sm);
+}
+.md-block details.uvi-breakdown[open] {
+  background: var(--paper-2);
+  border-color: var(--line);
+}
+.md-block details.uvi-breakdown summary {
+  font-weight: 500;
+  color: var(--ink-3);
+  font-size: 12px;
+  list-style: none;          /* hide default disclosure triangle */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.md-block details.uvi-breakdown summary::-webkit-details-marker { display: none; }
+.md-block details.uvi-breakdown[open] summary { color: var(--ink-2); margin-bottom: 8px; }
+.md-block details.uvi-breakdown summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.md-block .uvi-info-icon {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--editor-ink);
+  font-style: normal;
+}
+.md-block .uvi-info-label { letter-spacing: 0.01em; }
+.md-block .uvi-breakdown-body { padding-top: 4px; }
+.md-block .uvi-renorm {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--orange-600) 8%, transparent);
+  border-left: 3px solid var(--orange-600);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+.md-block table.uvi-breakdown-table {
+  width: 100%; border-collapse: collapse; margin: 6px 0;
+  font-family: var(--sans); font-size: 12px;
+}
+.md-block table.uvi-breakdown-table th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+.md-block .uvi-num { text-align: right; font-variant-numeric: tabular-nums; }
+.md-block .uvi-meaning {
+  font-size: 11px; color: var(--ink-4); font-weight: 400;
+  margin-top: 2px;
+}
+.md-block .uvi-sub {
+  font-size: 10.5px; color: var(--ink-4); font-weight: 400;
+  margin-top: 2px;
+}
+.md-block .uvi-sum {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ink);
+}
+.md-block .uvi-formula-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+/* ─── Hero variant of the UVI popover — same DOM, no .md-block parent. ───
+   The popover sits directly under the «60 / 100» display, anchored to the
+   hero. Closed state is a thin pill so it never breaks the bento layout;
+   the disclosure expands inline below the number block. CSS replicates the
+   .md-block scoped rules without the prefix so the popover is functional in
+   both contexts (markdown section AND hero) from a single template. */
+details.uvi-breakdown--hero {
+  margin: 14px 0 0;
+  max-width: 640px;
+  position: relative;
+  z-index: 3;
+  /* When closed: behave as inline badge, no card chrome */
+  border: 0;
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+details.uvi-breakdown--hero[open] {
+  background: var(--paper-2);
+  border: 1px solid var(--accent-soft);
+  border-left: 3px solid var(--accent);
+  padding: 10px 14px 12px;
+  border-radius: var(--r-sm);
+}
+details.uvi-breakdown--hero summary {
+  cursor: pointer;
+  font-family: var(--sans);
+  font-weight: 600;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  list-style: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  /* Badge styling — matches accent-pill convention used elsewhere */
+  padding: 5px 10px 5px 8px;
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent);
+  border-radius: 999px;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+details.uvi-breakdown--hero summary:hover {
+  background: color-mix(in srgb, var(--accent-soft) 70%, var(--accent-tint) 30%);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+}
+details.uvi-breakdown--hero summary::-webkit-details-marker { display: none; }
+details.uvi-breakdown--hero[open] summary {
+  margin-bottom: 8px;
+  background: var(--orange-600);
+  color: #FFFFFF;
+  border-color: var(--accent);
+}
+details.uvi-breakdown--hero[open] summary .uvi-info-icon { color: #FFFFFF; }
+details.uvi-breakdown--hero summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+details.uvi-breakdown--hero .uvi-info-icon {
+  font-size: 14px;
+  line-height: 1;
+  color: var(--accent);
+  font-style: normal;
+}
+details.uvi-breakdown--hero .uvi-info-label { letter-spacing: 0.01em; }
+details.uvi-breakdown--hero .uvi-breakdown-body { padding-top: 4px; }
+details.uvi-breakdown--hero .uvi-renorm {
+  margin: 0 0 10px;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--orange-600) 8%, transparent);
+  border-left: 3px solid var(--orange-600);
+  border-radius: 0 4px 4px 0;
+  font-size: 12px;
+  color: var(--ink-2);
+}
+details.uvi-breakdown--hero table.uvi-breakdown-table {
+  width: 100%; border-collapse: collapse; margin: 6px 0;
+  font-family: var(--sans); font-size: 12px;
+  color: var(--ink-2);
+}
+details.uvi-breakdown--hero table.uvi-breakdown-table th {
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+  text-align: left;
+  border-bottom: 1px solid var(--line-soft);
+  padding: 4px 6px;
+  color: var(--ink-3);
+  font-weight: 600;
+}
+details.uvi-breakdown--hero table.uvi-breakdown-table td {
+  padding: 6px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: top;
+}
+details.uvi-breakdown--hero .uvi-num { text-align: right; font-variant-numeric: tabular-nums; }
+details.uvi-breakdown--hero .uvi-meaning {
+  font-size: 11px; color: var(--ink-4); font-weight: 400;
+  margin-top: 2px;
+}
+details.uvi-breakdown--hero .uvi-sub {
+  font-size: 10.5px; color: var(--ink-4); font-weight: 400;
+  margin-top: 2px;
+}
+details.uvi-breakdown--hero .uvi-sum {
+  margin: 10px 0 0;
+  padding: 8px 10px;
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  border-radius: 4px;
+  font-size: 12px;
+  color: var(--ink);
+}
+details.uvi-breakdown--hero .uvi-formula-note {
+  margin: 8px 0 0;
+  font-size: 11px;
+  color: var(--ink-4);
+}
+
+/* ─── Colophon — editorial signature + technical meta ────── */
+.colophon {
+  margin-top: 64px;
+  padding-top: 0;
+  border-top: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+.colophon-ornament {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 360px;
+  color: var(--ink-4);
+}
+.colophon-rule {
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent 0%, var(--line-strong) 50%, transparent 100%);
+}
+.colophon-glyph {
+  font-family: var(--display);
+  font-weight: 300;
+  font-size: 22px;
+  line-height: 1;
+  color: var(--accent);
+  font-style: italic;
+}
+.colophon-signature {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 350;
+  font-size: 13px;
+  font-style: italic;
+  color: var(--ink-3);
+  text-align: center;
+  max-width: 52ch;
+  letter-spacing: 0;
+}
+.colophon-signature em {
+  font-style: normal;
+  font-weight: 500;
+  color: var(--ink-2);
+}
+.colophon-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.06em;
+  color: var(--ink-4);
+  text-transform: lowercase;
+}
+.colophon-meta strong { color: var(--ink-2); font-weight: 600; }
+.colophon-meta a { color: var(--ink-3); text-decoration: none; }
+.colophon-meta a:hover { color: var(--accent-ink); text-decoration: underline; text-underline-offset: 2px; }
+.colophon-meta .dot { color: var(--line-strong); }
+.colophon-runid {
+  font-feature-settings: "tnum";
+  font-variant-numeric: tabular-nums;
+  color: var(--ink-4);
+  opacity: 0.7;
+}
+
+/* ─── Print: bento already linear, just clean up ─────── */
+/* ─── Verbatim answer reveal (click-to-expand) ─────────────────
+   Per-cell <details> accordion below the query×engine matrix. Lets the
+   reader open the FULL engine answer behind any matrix cell. Native
+   <details> — zero JS, keyboard-accessible, works offline / printed.
+   Renders in BOTH default and white-label modes (the answer is measured
+   data, not a tool fingerprint). */
+/* ─── Verbatim answers ──────────────────────────────────────
+   Visual language shared verbatim with the portal's report-v2 reveals
+   (webappka ai-visibility-report.component.scss:1115-1199). Each row is
+   headed by the QUERY, with the engine as marginalia and a tone-coded
+   verdict badge pushed to the right edge. `excerpt` is ours: it marks a
+   truncated answer, which the portal has no equivalent for. */
+.reveal {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: var(--raised);
+}
+.reveal[open] { box-shadow: 0 1px 0 var(--line); }
+.reveal-summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 11px 14px;
+  cursor: pointer;
+  list-style: none;
+}
+.reveal-summary::-webkit-details-marker { display: none; }
+.reveal-summary::before {
+  content: '▸';
+  font-size: 11px;
+  color: var(--text-tertiary);
+}
+.reveal[open] .reveal-summary::before { content: '▾'; }
+.reveal-q {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.reveal-provider {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-4);
+}
+.reveal-trunc {
+  font-size: 10px;
+  font-style: italic;
+  color: var(--ink-4);
+}
+.reveal-badge {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  padding: 3px 9px;
+  border-radius: 999px;
+  margin-left: auto;
+}
+.reveal-badge.named  { color: var(--accent); background: var(--accent-wash); }
+.reveal-badge.cited  { color: var(--editor); background: rgba(18, 80, 176, 0.1); }
+.reveal-badge.absent { color: var(--ink-4); background: var(--paper-2); }
+.reveal-badge.error  { color: var(--error-color); background: rgba(255, 77, 79, 0.1); }
+.reveal-excerpt {
+  display: block;
+  margin: 0;
+  padding: 0 14px 14px;
+  font-family: var(--sans);
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--ink-2);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 420px;
+  overflow: auto;
+}
+
+@media print {
+  body { background: white; }
+  body::before { display: none; }
+  .rail { display: none; }
+  .layout { grid-template-columns: 1fr; gap: 0; }
+  .bento { grid-template-columns: 1fr 1fr; gap: 12px; }
+  .cell.span-6 { grid-column: span 2; }
+  .cell.span-4, .cell.span-3 { grid-column: span 2; }
+  .promote, .hero { break-inside: avoid; }
+  .cell { break-inside: avoid; }
+  .hero-ghost { display: none; }
+  a { color: var(--ink); text-decoration: underline; }
+  /* Force every verbatim reveal open in print/PDF so "Save as PDF" captures
+     the full answers — the accordion is collapsed on screen but a printed
+     deliverable must show everything. The text region drops its scroll cap. */
+  /* The on-screen scroll wrapper must not clip in print: print gives the
+     matrix the full content width, so the 520px floor is a floor, not a demand. */
+  .matrix { overflow-x: visible; }
+  .matrix-grid { min-width: 0; }
+  .reveal { display: block; break-inside: avoid; }
+  .reveal > .reveal-excerpt { display: block !important; max-height: none; overflow: visible; }
+  /* A long markdown cell (headline + narrative + two tables + a list) is long
+     enough that the blanket `.cell { break-inside: avoid }` above would force
+     it onto a single unbreakable box and either blank-page or clip in
+     Save-as-PDF. Short cells keep `avoid`; a cell that opts out carries
+     `data-paginate`. (The standalone #comparison section this rule was
+     written for was folded into Overview by the 2026-08 redesign.) */
+  .cell[data-paginate] { break-inside: auto; }
+}
+
+/* ─── Reduced motion: kill all transitions/animations site-wide. JS
+   hero-counter already respects this; CSS needs the same hand-off. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ─── Responsive ───────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .rail { margin: 0 -20px 24px; padding: 0 20px; font-size: 12px; }
+  .rail-label { padding: 12px 14px 12px 0; font-size: 9.5px; }
+  .rail a { padding: 14px 14px; }
+  .rail a::after { left: 14px; right: 14px; }
+  .bento { grid-template-columns: repeat(4, 1fr); }
+  .cell.span-6 { grid-column: span 4; }
+  .cell.span-4 { grid-column: span 4; }
+  .cell.span-3 { grid-column: span 2; }
+  .cell.span-2 { grid-column: span 2; }
+  .hero { grid-template-columns: 1fr; gap: 28px; }
+  .hero-side { padding-left: 0; padding-top: 24px; border-left: 0; border-top: 1px solid var(--line); }
+  .hero-num { font-size: 132px; }
+  .hero-num-frac { font-size: 32px; margin-top: 14px; }
+}
+@media (max-width: 720px) {
+  .page { padding: 20px 16px 56px; }
+  .mast { grid-template-columns: 1fr; gap: 16px; }
+  .mast-title { font-size: 44px; }
+  .hero { padding: 24px; }
+  .hero-num { font-size: 120px; }
+  .promote { grid-template-columns: 1fr; }
+  .bento { grid-template-columns: 1fr 1fr; }
+  .cell.span-6, .cell.span-4, .cell.span-3, .cell.span-2 { grid-column: span 2; }
+}
+
+/* ══════════════════════════════════════════════════════════
+   LOUD REGISTER — lr-* components (2026-08 full-report redesign)
+
+   Every rule below belongs to a component that states a conclusion:
+   verdict hero, one-page summary, alert card, answer row, axis table,
+   share table, where-to-act bar. They read the same tokens as the rest
+   of the report, so a token change moves them with everything else.
+
+   Contrast contract enforced here:
+     white text sits ONLY on --orange-600 / --error-color-strong /
+     --success-color / --editor. --error-color and --accent are fills
+     with nothing on top of them.
+   ══════════════════════════════════════════════════════════ */
+
+.lr-eyebrow {
+  display: block;
+  font-family: var(--sans);
+  font-size: var(--t-overline);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+.lr-eyebrow[data-tone="bad"]  { color: var(--error-color-strong); }
+.lr-eyebrow[data-tone="good"] { color: var(--success-color); }
+.lr-eyebrow[data-tone="warn"] { color: var(--orange-600); }
+
+.lr-h2 { margin: 0; font-weight: 600; font-size: var(--t-display-2); line-height: 1.15; letter-spacing: -1px; color: var(--text-primary); }
+.lr-h3-lg { margin: 18px 0 0; font-weight: 600; font-size: 32px; line-height: 1.2; letter-spacing: -0.5px; color: var(--text-primary); max-width: 34ch; }
+.lr-h3 { margin: 10px 0 0; font-weight: 600; font-size: 20px; line-height: 1.3; color: var(--text-primary); }
+.lr-lede { margin: 16px 0 0; font-size: 19px; line-height: 1.6; color: var(--text-secondary); max-width: 78ch; text-wrap: pretty; }
+.lr-body-lg { margin: 10px 0 0; font-size: 17px; line-height: 1.55; color: var(--text-secondary); text-wrap: pretty; }
+.lr-body { margin: 0; font-size: var(--t-body); line-height: 1.55; color: var(--text-secondary); }
+.lr-note { margin: 12px 0 0; font-size: var(--t-body); line-height: 1.6; color: var(--text-secondary); }
+.lr-strong { font-weight: 600; color: var(--text-primary); }
+.lr-num { font-family: var(--mono); font-weight: 600; font-variant-numeric: tabular-nums; }
+.lr-verdict-bad  { font-weight: 600; color: var(--error-color-strong); }
+.lr-verdict-good { font-weight: 600; color: var(--success-color); }
+
+/* ─── Chips ─────────────────────────────────────────────── */
+.lr-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  font-family: var(--mono); font-size: 14px; font-weight: 700;
+  font-variant-numeric: tabular-nums; white-space: nowrap;
+  background: var(--paper-2); color: var(--text-secondary);
+  border: 1px solid var(--line);
+}
+.lr-chip[data-tone="bad"]  { background: var(--error-color-strong); color: var(--raised); border-color: transparent; }
+.lr-chip[data-tone="good"] { background: var(--success-color);      color: var(--raised); border-color: transparent; }
+.lr-chip[data-tone="quiet"], .lr-chip[data-tone="flat"] { font-weight: 600; }
+.lr-chip[data-size="lg"] { font-size: 24px; padding: 10px 20px; border-radius: var(--r-md); }
+
+.lr-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  justify-self: start;
+  padding: 7px 14px; border-radius: 999px;
+  font-size: var(--t-body); font-weight: 700; white-space: nowrap;
+  background: var(--paper-2); color: var(--text-secondary);
+  border: 1px solid var(--line);
+}
+.lr-pill[data-tone="good"] { background: var(--success-color);      color: var(--raised); border-color: transparent; }
+.lr-pill[data-tone="bad"]  { background: var(--error-color-strong); color: var(--raised); border-color: transparent; }
+.lr-pill[data-tone="warn"] { background: var(--orange-600);         color: var(--raised); border-color: transparent; }
+
+/* ─── Cards ─────────────────────────────────────────────── */
+.lr-card {
+  background: var(--raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: var(--depth-3);
+  padding: 40px 44px;
+  break-inside: avoid;
+}
+.lr-card + .lr-card { margin-top: 24px; }
+.lr-card-head { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+.lr-head-titles { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.lr-head-meta { margin-left: auto; font-family: var(--mono); font-size: var(--t-meta); color: var(--text-secondary); }
+
+.lr-quiet { padding: 28px 30px; }
+.lr-quiet .lr-pill { margin-top: 14px; }
+.lr-quiet .lr-body { margin-top: 10px; }
+
+.lr-inset {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 22px 24px;
+  break-inside: avoid;
+}
+
+/* ─── Alert card — the treatment a check earns by tripping ── */
+.lr-alert { padding: 0; overflow: hidden; }
+.lr-alert-rail { display: block; height: 6px; background: var(--error-color); }
+.lr-alert[data-tone="warn"] .lr-alert-rail { background: var(--accent); }
+.lr-alert[data-tone="good"] .lr-alert-rail { background: var(--success-color); }
+.lr-alert-body { padding: 36px 40px 40px; }
+.lr-alert-kicker {
+  display: inline-flex; align-items: center; gap: 10px;
+  border-radius: 999px; padding: 7px 16px;
+  font-size: var(--t-overline); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  background: color-mix(in srgb, var(--error-color) 12%, transparent);
+  color: var(--error-color-strong);
+}
+.lr-alert[data-tone="warn"] .lr-alert-kicker { background: var(--accent-tint); color: var(--orange-600); }
+.lr-alert[data-tone="good"] .lr-alert-kicker { background: color-mix(in srgb, var(--success-color) 12%, transparent); color: var(--success-color); }
+.lr-alert-code {
+  margin-top: 24px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+  padding: 18px 22px;
+  font-family: var(--mono); font-size: 15px; color: var(--text-primary);
+  overflow-x: auto;
+}
+.lr-alert-figure {
+  display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+  margin-top: 26px; padding-top: 22px; border-top: 1px solid var(--line);
+}
+.lr-figure-num { font-weight: 600; font-size: 40px; line-height: 1; letter-spacing: -1.5px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lr-figure-num small { font-size: var(--t-body); font-weight: 500; color: var(--text-secondary); }
+
+/* ─── Verdict hero ──────────────────────────────────────── */
+.lr-hero {
+  background: var(--lede-bg);
+  border-bottom: 1px solid var(--line);
+  margin: 0 -36px;
+  padding: 64px 36px 56px;
+  break-inside: avoid;
+}
+.lr-hero-inner { max-width: 1240px; margin: 0 auto; }
+.lr-hero-kicker {
+  display: inline-flex; align-items: center; gap: 10px;
+  background: var(--accent-tint); color: var(--text-primary);
+  border-radius: 999px; padding: 7px 16px;
+  font-size: var(--t-overline); font-weight: 600;
+}
+.lr-hero-title {
+  margin: 24px 0 0;
+  font-family: var(--display);
+  font-weight: 600; font-size: var(--t-display-1); line-height: 1.1; letter-spacing: -1.5px;
+  color: var(--text-primary); max-width: 22ch; text-wrap: pretty;
+}
+.lr-hero-title em { font-style: normal; color: var(--orange-600); }
+.lr-hero-lede { margin: 24px 0 0; font-size: 20px; line-height: 1.55; color: var(--text-secondary); max-width: 70ch; text-wrap: pretty; }
+.lr-hero-kpis { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 40px; }
+/* The hero carries a fourth KPI (the lift aggregate) in the full report and
+   three in a white-label snapshot, so the track count follows the data rather
+   than being fixed at three — four cards on a three-track grid would leave one
+   stranded on a second row. */
+.lr-hero-kpis[data-count="4"] { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px; }
+.lr-hero-kpis[data-count="4"] .lr-kpi { padding: 22px 20px; }
+.lr-hero-kpis[data-count="4"] .lr-kpi-num { font-size: 46px; }
+.lr-kpi {
+  background: var(--raised); border: 1px solid var(--line); border-radius: var(--r-md);
+  box-shadow: var(--depth-3); padding: 24px 26px; break-inside: avoid;
+}
+.lr-kpi-row { display: flex; align-items: flex-end; gap: 14px; margin-top: 12px; flex-wrap: wrap; }
+.lr-kpi-num { font-weight: 600; font-size: 56px; line-height: 0.95; letter-spacing: -2px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lr-kpi-denom { font-size: 18px; font-weight: 500; color: var(--text-secondary); padding-bottom: 6px; }
+.lr-kpi-note { margin: 12px 0 0; font-size: var(--t-body); color: var(--text-secondary); }
+
+/* ─── One-page summary ──────────────────────────────────── */
+.lr-onepage { margin-top: 48px; }
+.lr-op-rows { display: flex; flex-direction: column; margin-top: 28px; }
+.lr-op-row {
+  display: grid; grid-template-columns: minmax(120px, 150px) minmax(0, 1fr) auto;
+  align-items: center; gap: 24px; padding: 20px 0;
+  border-top: 1px solid var(--line);
+  text-decoration: none; color: inherit;
+}
+.lr-op-row:last-child { border-bottom: 1px solid var(--line); }
+.lr-op-row:hover .lr-op-label { color: var(--orange-600); }
+.lr-op-id { display: flex; align-items: baseline; gap: 12px; min-width: 0; }
+.lr-op-num { font-family: var(--mono); font-size: var(--t-meta); font-weight: 700; color: var(--orange-600); }
+.lr-op-label { font-size: var(--t-body); font-weight: 600; color: var(--text-primary); }
+.lr-op-sentence { font-size: 19px; line-height: 1.5; color: var(--text-secondary); text-wrap: pretty; }
+.lr-op-mover { margin: 24px 0 0; font-size: 17px; line-height: 1.6; color: var(--text-secondary); max-width: 82ch; text-wrap: pretty; }
+
+/* ─── Section header ────────────────────────────────────── */
+.lr-sec-head {
+  display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap;
+  margin-top: 88px; padding-top: 44px; border-top: 2px solid var(--line);
+  break-inside: avoid; break-after: avoid;
+}
+.lr-sec-num { font-weight: 600; font-size: 52px; line-height: 0.85; letter-spacing: -2px; color: var(--accent); }
+.lr-sec-title { max-width: 30ch; }
+.lr-sec-intro { margin: 20px 0 0; font-size: 18px; line-height: 1.6; color: var(--text-secondary); max-width: 76ch; text-wrap: pretty; }
+
+/* ─── Where to act ──────────────────────────────────────── */
+.lr-act {
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+  margin-top: 24px; padding: 18px 24px;
+  background: var(--raised); border: 1px solid var(--line);
+  border-left: 4px solid var(--accent); border-radius: var(--r-sm);
+  break-inside: avoid;
+}
+.lr-act-label { font-size: var(--t-overline); font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--orange-600); }
+.lr-act-text { font-size: 19px; color: var(--text-primary); }
+.lr-act-meta { margin-left: auto; font-family: var(--mono); font-size: var(--t-meta); color: var(--text-secondary); }
+
+/* ─── Rows: axes and shares ─────────────────────────────── */
+.lr-rows { display: flex; flex-direction: column; margin-top: 24px; }
+.lr-axis-row, .lr-share-row {
+  align-items: center; gap: 16px; padding: 16px 0;
+  border-top: 1px solid var(--line);
+}
+.lr-rows > *:last-child { border-bottom: 1px solid var(--line); }
+.lr-axis-row { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 60px) minmax(70px, 1fr) minmax(0, 100px) minmax(0, 190px); }
+.lr-axis-label { font-size: 19px; font-weight: 600; color: var(--text-primary); }
+.lr-axis-weight { font-family: var(--mono); font-size: var(--t-body); color: var(--orange-600); }
+.lr-axis-value { font-family: var(--mono); font-size: 20px; text-align: right; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lr-axis-value[data-muted="1"] { font-size: var(--t-body); color: var(--text-secondary); }
+.lr-axis-chip { display: flex; justify-content: flex-end; }
+.lr-bar { display: block; height: 14px; border-radius: var(--r-sm); background: var(--paper-2); overflow: hidden; }
+.lr-bar-fill { display: block; height: 100%; background: var(--accent); }
+.lr-bar-fill[data-muted="1"] { background: var(--line); }
+.lr-bar-fill[data-color="rival"] { background: var(--eng-gem); }
+.lr-bar-fill[data-color="other"] { background: var(--line-strong); }
+
+.lr-share-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 90px) minmax(70px, 1.4fr) minmax(0, 120px) minmax(0, 1.1fr); }
+.lr-share-row[data-you="1"] { background: var(--accent-tint); }
+.lr-share-name { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0; overflow-wrap: anywhere; font-size: 18px; font-weight: 600; color: var(--text-primary); }
+.lr-share-name .lr-tag { font-size: var(--t-overline); font-weight: 600; color: var(--orange-600); }
+.lr-share-name .lr-host { font-family: var(--mono); font-size: var(--t-body); font-weight: 400; }
+.lr-share-count { font-family: var(--mono); font-size: 17px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.lr-share-track { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.lr-share-track .lr-bar { flex: 1; }
+.lr-share-pct { font-family: var(--mono); font-size: 15px; color: var(--text-secondary); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lr-share-note { font-size: var(--t-body); color: var(--text-secondary); }
+
+/* ─── Fold — a collapsed disclosure around a long block ─────
+   Shut on screen so a section's depth layer does not unroll into a wall of
+   type. The block's own heading and sub stay OUTSIDE the fold, so the reader
+   still learns what is in there without opening it; only the rows wait for a
+   click. Opened for print by the page's inline handler — see the `.reveal,
+   .fold` selector there before touching anything here. */
+.fold { margin-top: 20px; border-top: 1px solid var(--line); }
+.fold > summary { list-style: none; }
+.fold > summary::-webkit-details-marker { display: none; }
+.fold > summary::marker { content: ""; }
+.fold-sum {
+  display: flex; align-items: baseline; gap: 10px; cursor: pointer;
+  padding: 16px 0 0; font-size: var(--t-body); font-weight: 600;
+  color: var(--text-primary); flex-wrap: wrap;
+}
+.fold-sum:hover { color: var(--accent); }
+/* The category marker. Leads the row, identical on every fold, so the proof
+   layer reads as one kind of thing at a glance. Deliberately NOT a filled
+   band: this is the least important control on the page and must not compete
+   with the matrix toggle or the copy button. */
+.fold-tag {
+  flex-shrink: 0; align-self: center;
+  font-family: var(--mono); font-size: 10px; font-weight: 600;
+  letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--orange-600);
+  border: 1px solid var(--line-strong);
+  border-radius: 4px; padding: 3px 7px; line-height: 1;
+}
+.fold-caret {
+  width: 0; height: 0; flex-shrink: 0; align-self: center;
+  border-left: 6px solid var(--accent);
+  border-top: 4.5px solid transparent;
+  border-bottom: 4.5px solid transparent;
+  transition: transform 0.15s ease;
+}
+.fold[open] .fold-caret { transform: rotate(90deg); }
+.fold-hide { display: none; }
+.fold[open] .fold-show { display: none; }
+.fold[open] .fold-hide { display: inline; }
+.fold-meta { font-weight: 400; font-size: var(--t-meta); color: var(--text-secondary); }
+.fold-body { padding-top: 4px; }
+/* Two rules stacked ~150px apart read as a stutter; the sub-section header
+   already draws the boundary, so the fold under it does not. */
+.lr-subsec + .fold { border-top: 0; margin-top: 10px; }
+@media print {
+  /* "Show all 27 answers" is a dead instruction on paper — but the rule that
+     separates the block from its heading is not, so only the label goes. */
+  .fold-sum { display: none; }
+  .fold-body { padding-top: 0; }
+}
+
+/* ─── Sub-section header ────────────────────────────────────
+   A named chapter INSIDE a section — the boundary between the blocks a reader
+   scans and the record that backs them up. Deliberately NOT a card: a card
+   dropped into a section that already holds cards reads as one more peer
+   block, and this is a heading FOR everything below it. The rule + space is
+   the whole signal. */
+.lr-subsec { margin-top: 44px; padding-top: 32px; border-top: 1px solid var(--line); break-inside: avoid; break-after: avoid; }
+.lr-subsec .lr-h3 { margin: 6px 0 0; }
+.lr-subsec .lr-sec-intro { margin-top: 14px; }
+
+/* ─── Answer rows ───────────────────────────────────────── */
+.lr-answers { padding: 0; overflow: hidden; margin-top: 24px; }
+.lr-answers-head { padding: 28px 32px 24px; border-bottom: 1px solid var(--line); }
+.lr-question { margin: 8px 0 0; font-size: 26px; font-weight: 600; letter-spacing: -0.5px; line-height: 1.25; color: var(--text-primary); }
+.lr-answer { break-inside: avoid; }
+.lr-answer[data-divider="1"] { border-bottom: 1px solid var(--line); }
+.lr-answer > summary { list-style: none; }
+.lr-answer > summary::-webkit-details-marker { display: none; }
+.lr-answer > summary::marker { content: ""; }
+.lr-answer-sum {
+  display: grid; grid-template-columns: minmax(0, 190px) minmax(0, 240px) minmax(0, 140px) minmax(110px, 1fr);
+  align-items: center; gap: 18px; padding: 20px 32px;
+}
+.lr-eng { display: flex; align-items: center; gap: 10px; font-size: 17px; font-weight: 600; color: var(--text-primary); }
+.lr-eng-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; background: var(--line-strong); }
+.lr-eng-dot[data-engine="openai"]     { background: var(--eng-gpt); }
+.lr-eng-dot[data-engine="gemini"]     { background: var(--eng-gem); }
+.lr-eng-dot[data-engine="anthropic"]  { background: var(--eng-cla); }
+.lr-eng-dot[data-engine="perplexity"] { background: var(--eng-perp); }
+.lr-answer-rank { font-size: var(--t-body); color: var(--text-secondary); }
+.lr-answer-rank[data-strong="1"] { color: var(--text-primary); font-weight: 600; }
+.lr-answer-record { font-size: var(--t-body); color: var(--text-secondary); }
+.lr-answer-detail {
+  padding: 4px 32px 28px; background: var(--paper);
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 24px;
+}
+.lr-answer-detail h4 { margin: 0 0 8px; }
+
+/* ─── Record dots + run strip ───────────────────────────── */
+.lr-dots { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; }
+.lr-dots-more { font-family: var(--mono); font-size: var(--t-meta); color: var(--text-secondary); margin-right: 4px; }
+.lr-dot { width: 13px; height: 13px; border-radius: 50%; background: var(--raised); box-shadow: inset 0 0 0 2px var(--text-tertiary); flex-shrink: 0; }
+.lr-dots[data-size="sm"] .lr-dot { width: 9px; height: 9px; }
+.lr-dot[data-state="named"] { background: var(--accent); box-shadow: none; }
+.lr-dot[data-state="cited"] { background: var(--orange-600); box-shadow: none; }
+.lr-dot[data-state="blank"] { background: var(--paper-2); box-shadow: inset 0 0 0 1px var(--line); }
+.lr-dot[data-current="1"][data-state="named"] { box-shadow: 0 0 0 3px var(--accent-tint); }
+.lr-dot[data-current="1"][data-state="absent"] { background: var(--error-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--error-color) 30%, transparent); }
+.lr-dot[data-drift="1"] { outline: 1px dashed var(--line-strong); outline-offset: 2px; }
+
+.lr-strip { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; margin-top: 14px; }
+.lr-strip-col { display: flex; flex-direction: column; gap: 8px; align-items: center; font-family: var(--mono); font-size: 11px; color: var(--text-secondary); }
+.lr-strip-col[data-current="1"] { color: var(--error-color-strong); font-weight: 700; }
+.lr-strip-idx { font-weight: 600; }
+/* The block carries a white glyph, so its fill comes from the AA-safe set,
+   not from --accent (2.84:1) or --error-color (3.27:1) — both of which fail
+   even the large-text threshold at this size. State is carried by the glyph
+   (✓ / ◆ / ✕ / –) as well as the fill. */
+.lr-strip-block {
+  width: 100%; height: 68px; border-radius: var(--r-sm);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+  font-style: normal; font-size: 26px; color: var(--raised); font-weight: 600;
+  background: var(--orange-600);
+}
+.lr-strip-block[data-state="absent"] { background: var(--error-color-strong); }
+.lr-strip-block[data-state="cited"]  { background: var(--editor); }
+.lr-strip-block[data-state="blank"]  { background: var(--paper-2); color: var(--text-secondary); box-shadow: inset 0 0 0 1px var(--line); }
+.lr-strip-now { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; background: var(--error-color-strong); border-radius: 999px; padding: 2px 7px; }
+
+/* ─── Chart ─────────────────────────────────────────────── */
+.lr-chart { width: 100%; height: auto; display: block; }
+.lr-chart-base { stroke: var(--line); stroke-width: 1; }
+.lr-chart-rule { stroke: var(--text-tertiary); stroke-width: 1; stroke-dasharray: 4 4; }
+.lr-chart-fill { fill: var(--accent-tint); }
+.lr-chart-line { fill: none; stroke: var(--accent); stroke-width: 3; stroke-linejoin: round; stroke-linecap: round; }
+.lr-chart-point { fill: var(--accent); }
+.lr-chart-first { fill: var(--raised); stroke: var(--text-tertiary); stroke-width: 2; }
+.lr-chart-partial { fill: var(--raised); stroke: var(--orange-600); stroke-width: 2; }
+.lr-chart-partial-span { stroke: var(--orange-600); stroke-width: 1.5; }
+.lr-chart-last { fill: var(--error-color-strong); }
+.lr-chart-axis { font-family: var(--mono); font-size: 12px; fill: var(--text-secondary); }
+.lr-chart-note, .lr-chart-flag { font-family: var(--mono); font-size: 12px; fill: var(--orange-600); }
+.lr-chart-note { fill: var(--text-secondary); font-size: 13px; }
+.lr-chart-last-label { font-family: var(--mono); font-size: 13px; font-weight: 700; fill: var(--error-color-strong); }
+
+/* ─── Tiles + layout helpers ────────────────────────────── */
+.lr-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 20px; }
+.lr-tile { border: 1px solid var(--line); border-radius: var(--r-sm); padding: 16px 18px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 12px; break-inside: avoid; }
+.lr-tile-name { font-family: var(--mono); font-size: var(--t-body); color: var(--text-primary); }
+.lr-tile .lr-pill { font-size: 13px; padding: 5px 10px; flex-shrink: 0; }
+.lr-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; margin-top: 36px; }
+.lr-grid-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; margin-top: 24px; }
+.lr-disclaimer {
+  margin: 28px 0 0; padding: 18px 24px;
+  background: var(--paper); border: 1px solid var(--line); border-radius: var(--r-sm);
+  font-size: 15px; line-height: 1.6; color: var(--text-secondary);
+}
+.lr-internal { border-color: var(--editor-soft); }
+
+/* ─── Print ─────────────────────────────────────────────── */
+@media print {
+  .lr-card, .lr-kpi, .lr-inset, .lr-tile, .lr-answer, .lr-act, .lr-hero { break-inside: avoid; }
+  .lr-sec-head { break-before: auto; break-after: avoid; }
+  .lr-hero { margin: 0; padding: 24px 0 32px; background: var(--raised); }
+  .lr-op-row { break-inside: avoid; }
+  /* Answer rows are emitted `open`; CSS cannot force a closed <details>
+     open for print, which is why the generator does not collapse them. */
+  .lr-answer[open] > .lr-answer-detail { display: grid; }
+}
+
+/* ─── Responsive ────────────────────────────────────────── */
+@media (max-width: 1080px) {
+  .lr-card { padding: 28px 26px; }
+  .lr-hero-kpis, .lr-hero-kpis[data-count="4"], .lr-grid-3 { grid-template-columns: 1fr; }
+  .lr-hero-title { font-size: 42px; }
+  .lr-answer-sum { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+  .lr-answer-detail { grid-template-columns: 1fr; }
+  .lr-axis-row { grid-template-columns: minmax(0, 1fr) minmax(0, 60px); grid-auto-rows: min-content; }
+  .lr-axis-row .lr-bar, .lr-axis-row .lr-axis-value, .lr-axis-row .lr-axis-chip { grid-column: 1 / -1; justify-content: flex-start; text-align: left; }
+  .lr-share-row { grid-template-columns: minmax(0, 1fr) minmax(0, 90px); }
+  .lr-share-row .lr-share-track, .lr-share-row .lr-share-chip, .lr-share-row .lr-share-note { grid-column: 1 / -1; }
+  .lr-op-row { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+  .lr-grid-2 { grid-template-columns: 1fr; }
+  .lr-alert-body, .lr-answers-head, .lr-answer-sum, .lr-answer-detail { padding-left: 24px; padding-right: 24px; }
+}
+
+/* ─── Loud register: section + chart layout ─────────────── */
+.lr-section { scroll-margin-top: 80px; }
+.lr-section .bento { margin-top: 24px; }
+.lr-section > .lr-card:first-of-type,
+.lr-section > .lr-answers:first-of-type { margin-top: 32px; }
+.lr-chart-split { display: grid; grid-template-columns: minmax(240px, 300px) minmax(0, 1fr); gap: 48px; align-items: center; }
+.lr-chart-chip { display: flex; align-items: center; gap: 12px; margin-top: 20px; flex-wrap: wrap; }
+.lr-mono-table { margin: 10px 0 0; border-collapse: collapse; font-family: var(--mono); font-size: var(--t-meta); line-height: 1.6; color: var(--text-secondary); }
+.lr-mono-table th { padding: 1px 20px 4px 0; text-align: left; font-weight: 600; font-size: 11px; letter-spacing: 0.02em; text-transform: uppercase; color: var(--text-tertiary); }
+.lr-mono-table td { padding: 1px 20px 1px 0; white-space: nowrap; }
+.lr-mono-table td:first-child { color: var(--text-primary); }
+.lr-alert-figure-wrap { margin-top: 36px; }
+.lr-answers .lr-eyebrow { display: block; }
+@media (max-width: 1080px) {
+  .lr-chart-split { grid-template-columns: 1fr; gap: 24px; }
+}
+/* The hero bleeds to the page edge by cancelling .page's padding. That padding
+   drops to 16px on narrow screens, so the bleed has to follow or the hero
+   overflows the viewport and introduces a horizontal scrollbar. */
+@media (max-width: 720px) {
+  .lr-hero { margin: 0 -16px; padding: 40px 16px 36px; }
+  .lr-hero-title { font-size: 32px; letter-spacing: -0.5px; }
+  .lr-card { padding: 22px 20px; }
+  .lr-alert-body, .lr-answers-head, .lr-answer-sum, .lr-answer-detail { padding-left: 20px; padding-right: 20px; }
+  .lr-sec-head { margin-top: 56px; padding-top: 28px; }
+  .lr-sec-num { font-size: 36px; }
+  .lr-h2 { font-size: 28px; }
+  .lr-question { font-size: 20px; }
+  .lr-kpi-num { font-size: 40px; }
+  .lr-act { flex-direction: column; gap: 8px; }
+  .lr-act-meta { margin-left: 0; }
+}
+@media print {
+  .lr-chart-split { grid-template-columns: minmax(200px, 260px) minmax(0, 1fr); gap: 24px; }
+}

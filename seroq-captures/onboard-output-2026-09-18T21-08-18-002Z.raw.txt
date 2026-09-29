@@ -1,0 +1,211 @@
+{
+
+"brandName": "MailerLite",
+
+"aliases": \[\],
+
+"industry": "email marketing and marketing automation software",
+
+"offerSummary": "MailerLite sells email marketing software with campaigns, automation, landing pages, websites, signup forms, e-commerce tools, digital product sales, paid newsletters, analytics, integrations, and AI-assisted marketing features.",
+
+"geography": {
+
+"value": "UNKNOWN",
+
+"evidenceStatus": "UNKNOWN"
+
+},
+
+"competitors": \[
+
+{
+
+"name": "Mailchimp",
+
+"reason": "Offers email campaigns, marketing automation, audience management, landing pages, and related digital marketing tools."
+
+},
+
+{
+
+"name": "Brevo",
+
+"reason": "Competes in email marketing and automation for businesses with campaigns, workflows, forms, and customer communication tools."
+
+},
+
+{
+
+"name": "Kit",
+
+"reason": "Targets creators with email marketing, subscriber growth, automation, landing pages, and monetization tools."
+
+},
+
+{
+
+"name": "ActiveCampaign",
+
+"reason": "Provides email marketing and advanced automation workflows for businesses managing leads and customer journeys."
+
+},
+
+{
+
+"name": "GetResponse",
+
+"reason": "Offers email marketing, automation, landing pages, signup tools, and conversion-focused marketing features."
+
+},
+
+{
+
+"name": "Constant Contact",
+
+"reason": "Provides email marketing, templates, automation, signup tools, and digital marketing features for small businesses."
+
+},
+
+{
+
+"name": "AWeber",
+
+"reason": "Competes for small businesses and creators with newsletters, automation, landing pages, forms, and subscriber management."
+
+},
+
+{
+
+"name": "Campaign Monitor",
+
+"reason": "Provides email campaign creation, automation, templates, segmentation, and performance reporting."
+
+}
+
+\],
+
+"buyerJourneys": \[
+
+{
+
+"query": "What are the best email marketing platforms for a small business?",
+
+"intent": "discovery",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which email marketing tool is easiest to use for a beginner?",
+
+"intent": "discovery",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "What email marketing platform combines newsletters, automation, landing pages, and signup forms?",
+
+"intent": "solution",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which email marketing software is best for creators selling digital products and paid newsletters?",
+
+"intent": "solution",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "What is the best email automation platform for an e-commerce store?",
+
+"intent": "solution",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which email marketing platforms have good automation without being too complicated?",
+
+"intent": "comparison",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "What are the best alternatives to Mailchimp for small businesses?",
+
+"intent": "comparison",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which email marketing service offers the best value for a growing subscriber list?",
+
+"intent": "purchase",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "Which email marketing platform has strong deliverability and tools for cleaning email lists?",
+
+"intent": "problem",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "What email marketing software has reliable 24/7 customer support?",
+
+"intent": "decision",
+
+"commercialValue": "medium"
+
+},
+
+{
+
+"query": "Is MailerLite a good choice for creators and small businesses that need email automation and landing pages?",
+
+"intent": "decision",
+
+"commercialValue": "high"
+
+},
+
+{
+
+"query": "How does MailerLite compare with Mailchimp for ease of use, automation, and pricing?",
+
+"intent": "comparison",
+
+"commercialValue": "high"
+
+}
+
+\]
+
+}

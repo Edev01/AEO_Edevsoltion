@@ -1,0 +1,89 @@
+{
+  "date": "2026-09-20",
+  "brand": "swenta global",
+  "domain": "swentaglobal.com",
+  "score": 0,
+  "mentions": 0,
+  "total": 0,
+  "errors": 3,
+  "measurementCounts": {
+    "hits": 0,
+    "valid": 0,
+    "attempts": 3,
+    "errors": 3,
+    "cells": 3,
+    "definition": "score = hits / valid; valid = attempts − errors; errors are never in the denominator"
+  },
+  "regressionThreshold": 10,
+  "sessionCostUsd": 0,
+  "costByModel": [],
+  "extractorMode": "single",
+  "extractorModels": [
+    "gemini/gemini-3.1-flash-lite"
+  ],
+  "generatedBy": "aeo-platform@1.14.0",
+  "measurement": {
+    "surface": "api",
+    "disclaimer": "Measures each engine's API surface via your own keys — a reproducible proxy, NOT a guarantee of what the consumer app (chatgpt.com, perplexity.ai, the Gemini app) shows to a human; excludes Google AI Overviews / AI Mode and Microsoft Copilot."
+  },
+  "results": [
+    {
+      "query": "Q3",
+      "queryText": "best corporate tax advisory services UK",
+      "queryId": "q_2a37361b3e2c",
+      "provider": "gemini",
+      "label": "Gemini",
+      "model": "gemini-3.1-flash-lite",
+      "mode": "web",
+      "mention": "error",
+      "position": null,
+      "citationCount": 0,
+      "canonicalCitations": [],
+      "competitors": [],
+      "elapsedMs": 556,
+      "error": "Gemini: You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
+    },
+    {
+      "query": "Q2",
+      "queryText": "top business strategy and advisory consulting firms",
+      "queryId": "q_dd4e8074434b",
+      "provider": "gemini",
+      "label": "Gemini",
+      "model": "gemini-3.1-flash-lite",
+      "mode": "web",
+      "mention": "error",
+      "position": null,
+      "citationCount": 0,
+      "canonicalCitations": [],
+      "competitors": [],
+      "elapsedMs": 568,
+      "error": "Gemini: You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
+    },
+    {
+      "query": "Q1",
+      "queryText": "best business compliance and corporate tax consultants",
+      "queryId": "q_c133048e0306",
+      "provider": "gemini",
+      "label": "Gemini",
+      "model": "gemini-3.1-flash-lite",
+      "mode": "web",
+      "mention": "error",
+      "position": null,
+      "citationCount": 0,
+      "canonicalCitations": [],
+      "competitors": [],
+      "elapsedMs": 613,
+      "error": "Gemini: You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
+    }
+  ],
+  "topCompetitors": [],
+  "unverifiedOnly": [],
+  "topCanonicalSources": [],
+  "topDomains": [],
+  "adsDetected": {
+    "totalCellsScanned": 3,
+    "totalCellsWithAdSignal": 0,
+    "byProvider": {},
+    "samples": []
+  }
+}

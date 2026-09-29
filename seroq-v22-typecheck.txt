@@ -1,0 +1,28 @@
+﻿components/dashboard/tabs/action-center-tab.tsx(73,5): error TS2322: Type '"PROPOSED"' is not assignable to type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(225,3): error TS2322: Type '"PROPOSED"' is not assignable to type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(226,3): error TS2322: Type '"APPROVED"' is not assignable to type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(227,3): error TS2820: Type '"IN_PROGRESS"' is not assignable to type 'SeroqActionStatus'. Did you mean '"in_progress"'?
+components/dashboard/tabs/action-center-tab.tsx(228,3): error TS2322: Type '"DONE"' is not assignable to type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(229,3): error TS2322: Type '"REJECTED"' is not assignable to type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(237,7): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"DONE"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(238,7): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"REJECTED"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(239,7): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"IN_PROGRESS"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(240,7): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"APPROVED"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(309,7): error TS2322: Type '"APPROVED"' is not assignable to type 'SeroqActionStatus | undefined'.
+components/dashboard/tabs/action-center-tab.tsx(315,9): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"APPROVED"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(316,30): error TS2820: Type '"IN_PROGRESS"' is not assignable to type 'SeroqActionStatus | undefined'. Did you mean '"in_progress"'?
+components/dashboard/tabs/action-center-tab.tsx(320,9): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"IN_PROGRESS"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(322,7): error TS2322: Type '"DONE"' is not assignable to type 'SeroqActionStatus | undefined'.
+components/dashboard/tabs/action-center-tab.tsx(328,30): error TS2322: Type '"REJECTED"' is not assignable to type 'SeroqActionStatus | undefined'.
+components/dashboard/tabs/action-center-tab.tsx(333,7): error TS2322: Type '"PROPOSED"' is not assignable to type 'SeroqActionStatus | undefined'.
+components/dashboard/tabs/action-center-tab.tsx(339,31): error TS2345: Argument of type '"PROPOSED"' is not assignable to parameter of type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(341,17): error TS2345: Argument of type '"APPROVED"' is not assignable to parameter of type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(341,49): error TS2345: Argument of type '"IN_PROGRESS"' is not assignable to parameter of type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(342,27): error TS2345: Argument of type '"DONE"' is not assignable to parameter of type 'SeroqActionStatus'.
+components/dashboard/tabs/action-center-tab.tsx(518,20): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"PROPOSED"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(537,20): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"APPROVED"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(547,20): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"IN_PROGRESS"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(557,21): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"DONE"' have no overlap.
+components/dashboard/tabs/action-center-tab.tsx(558,21): error TS2367: This comparison appears to be unintentional because the types 'SeroqActionStatus' and '"REJECTED"' have no overlap.
+components/dashboard/types.ts(172,13): error TS2300: Duplicate identifier 'SeroqActionStatus'.
+components/dashboard/types.ts(273,13): error TS2300: Duplicate identifier 'SeroqActionStatus'.

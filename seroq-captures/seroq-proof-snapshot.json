@@ -1,0 +1,563 @@
+{
+  "generatedAt": "2026-09-20T11:49:41.579Z",
+  "methodology": "deterministic-official-page-verification",
+  "profiles": [
+    {
+      "brand": "EDEV Solutions",
+      "sources": [
+        {
+          "url": "https://www.edevsolutions.com/",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.144Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Edev Solutions, Agentic systems.",
+              "url": "https://www.edevsolutions.com/",
+              "brand": "EDEV Solutions",
+              "sourceClass": "first-party"
+            }
+          ]
+        }
+      ],
+      "proofs": [
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Edev Solutions, Agentic systems.",
+          "url": "https://www.edevsolutions.com/",
+          "brand": "EDEV Solutions",
+          "sourceClass": "first-party"
+        }
+      ],
+      "successfullyReviewedSources": 1,
+      "failedSources": 0
+    },
+    {
+      "brand": "Accenture",
+      "sources": [
+        {
+          "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.145Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Reinvent Operations and Advance Innovation With Generative & Agentic AI | Accenture Skip to main content Skip to footer Menu Close Menu What we do Back What we do Capabilities Capabilities Artificial Intelligence and Data Cloud Customer Service Cybersecurity Digital Engineering and Manufacturing Ecosystem Partners Emerging Technology Finance and Risk Management Infrastructure and Capital Projects Learning Managed Ser",
+              "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "hitl-controls",
+              "excerpt": "Responsibly reinventing government Reinvent government services by combining advanced AI with safeguards that ensure transparency, implement human-in-the-loop mechanisms for critical decisions and protect sensitive data—delivering innovation without compromising accountability.",
+              "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "Regulatory compliance Adopt AI solutions that support compliance by tracking requirements, enforcing policies and maintaining auditability—ensuring alignment with federal standards for security, ethics and accountability.",
+              "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            }
+          ]
+        },
+        {
+          "url": "https://www.accenture.com/en/case-studies/ai-data/blueprint-responsible-ai",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.146Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "The vast majority (96%) of organizations support some level of government regulation around AI, but only…​ 2% of companies have self-identified as having fully operationalized responsible AI across their organization Making responsible AI vital and embedded throughout the organization It’s vital to scale this technology in responsible, ethical ways , and put AI governance and the responsible use of AI into practice t",
+              "url": "https://www.accenture.com/en/case-studies/ai-data/blueprint-responsible-ai",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            }
+          ]
+        },
+        {
+          "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.146Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "rms FAQs AI, Data and Automation The full spectrum of AI, from data readiness and intelligent automation to agentic platforms that work in your environment.",
+              "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "We build the foundation, governance and delivery model that makes scaling repeatable — not exceptional.",
+              "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "production-operations",
+              "excerpt": "Yes — we offer managed services for AI and automation environments, including continuous monitoring, optimization and improvement as your use cases scale.",
+              "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+              "brand": "Accenture",
+              "sourceClass": "first-party"
+            }
+          ]
+        }
+      ],
+      "proofs": [
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Reinvent Operations and Advance Innovation With Generative & Agentic AI | Accenture Skip to main content Skip to footer Menu Close Menu What we do Back What we do Capabilities Capabilities Artificial Intelligence and Data Cloud Customer Service Cybersecurity Digital Engineering and Manufacturing Ecosystem Partners Emerging Technology Finance and Risk Management Infrastructure and Capital Projects Learning Managed Ser",
+          "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "hitl-controls",
+          "excerpt": "Responsibly reinventing government Reinvent government services by combining advanced AI with safeguards that ensure transparency, implement human-in-the-loop mechanisms for critical decisions and protect sensitive data—delivering innovation without compromising accountability.",
+          "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "Regulatory compliance Adopt AI solutions that support compliance by tracking requirements, enforcing policies and maintaining auditability—ensuring alignment with federal standards for security, ethics and accountability.",
+          "url": "https://www.accenture.com/en-us/services/us-federal-government/generative-ai",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "The vast majority (96%) of organizations support some level of government regulation around AI, but only…​ 2% of companies have self-identified as having fully operationalized responsible AI across their organization Making responsible AI vital and embedded throughout the organization It’s vital to scale this technology in responsible, ethical ways , and put AI governance and the responsible use of AI into practice t",
+          "url": "https://www.accenture.com/en/case-studies/ai-data/blueprint-responsible-ai",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "rms FAQs AI, Data and Automation The full spectrum of AI, from data readiness and intelligent automation to agentic platforms that work in your environment.",
+          "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "We build the foundation, governance and delivery model that makes scaling repeatable — not exceptional.",
+          "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "production-operations",
+          "excerpt": "Yes — we offer managed services for AI and automation environments, including continuous monitoring, optimization and improvement as your use cases scale.",
+          "url": "https://www.accenture.com/en/edge/services/ai-data-automation",
+          "brand": "Accenture",
+          "sourceClass": "first-party"
+        }
+      ],
+      "successfullyReviewedSources": 3,
+      "failedSources": 0
+    },
+    {
+      "brand": "BCG X",
+      "sources": [
+        {
+          "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.148Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Visit Page Within Artificial Intelligence AI Agents Generative AI Responsible AI Business and Organizational Purpose Business and Organizational Purpose Business and Organizational Purpose Excavating purpose is among the rewarding journeys companies can take.",
+              "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+              "brand": "BCG X",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "hitl-controls",
+              "excerpt": "Human-in-the-loop is not a UX feature.",
+              "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+              "brand": "BCG X",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "evaluation-system",
+              "excerpt": "The most effective evaluation stacks include: Task-based binary rubrics for each compliance requirement A golden dataset labeled by domain experts that covers the full spectrum of cases, not just happy paths An LLM judge calibrated to human labels Offline evaluation before any production traffic Backtesting against historical data A/B testing in production Continuous online monitoring, where every trace is a potentia",
+              "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+              "brand": "BCG X",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "Reason codes, approvals, timestamps, and audit trails are the artifacts that make the system defensible to a regulator.",
+              "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+              "brand": "BCG X",
+              "sourceClass": "first-party"
+            }
+          ]
+        }
+      ],
+      "proofs": [
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Visit Page Within Artificial Intelligence AI Agents Generative AI Responsible AI Business and Organizational Purpose Business and Organizational Purpose Business and Organizational Purpose Excavating purpose is among the rewarding journeys companies can take.",
+          "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+          "brand": "BCG X",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "hitl-controls",
+          "excerpt": "Human-in-the-loop is not a UX feature.",
+          "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+          "brand": "BCG X",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "evaluation-system",
+          "excerpt": "The most effective evaluation stacks include: Task-based binary rubrics for each compliance requirement A golden dataset labeled by domain experts that covers the full spectrum of cases, not just happy paths An LLM judge calibrated to human labels Offline evaluation before any production traffic Backtesting against historical data A/B testing in production Continuous online monitoring, where every trace is a potentia",
+          "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+          "brand": "BCG X",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "Reason codes, approvals, timestamps, and audit trails are the artifacts that make the system defensible to a regulator.",
+          "url": "https://www.bcg.com/x/the-multiplier/stop-automating-your-broken-processes",
+          "brand": "BCG X",
+          "sourceClass": "first-party"
+        }
+      ],
+      "successfullyReviewedSources": 1,
+      "failedSources": 0
+    },
+    {
+      "brand": "Deloitte",
+      "sources": [
+        {
+          "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.148Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Agentic AI – lessons from the real world | Deloitte Southeast Asia Link opens in a new tab opens in new window Skip to main content Who we are Overview Purpose & Values Our People Governance Recognition Press room Contact Us What we believe in Future vision Social responsibility Network, brands & alliances Global events About Deloitte Asia Pacific Accolades Analyst Relations Deloitte in the News What we do Overview C",
+              "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+              "brand": "Deloitte",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "hitl-controls",
+              "excerpt": "Importantly, the right agentic AI use cases will also involve human review and oversight at specific points in the process, which makes them well suited for a human-in-the-loop design.",
+              "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+              "brand": "Deloitte",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "Agentic AI – lessons from the real world | Deloitte Southeast Asia Link opens in a new tab opens in new window Skip to main content Who we are Overview Purpose & Values Our People Governance Recognition Press room Contact Us What we believe in Future vision Social responsibility Network, brands & alliances Global events About Deloitte Asia Pacific Accolades Analyst Relations Deloitte in the News What we do Overview C",
+              "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+              "brand": "Deloitte",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "vendor-portability",
+              "excerpt": "Rather, successful organisations find a fit-for-purpose model and build a model-agnostic platform for ease of adaption and to avoid future constraints.",
+              "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+              "brand": "Deloitte",
+              "sourceClass": "first-party"
+            }
+          ]
+        }
+      ],
+      "proofs": [
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Agentic AI – lessons from the real world | Deloitte Southeast Asia Link opens in a new tab opens in new window Skip to main content Who we are Overview Purpose & Values Our People Governance Recognition Press room Contact Us What we believe in Future vision Social responsibility Network, brands & alliances Global events About Deloitte Asia Pacific Accolades Analyst Relations Deloitte in the News What we do Overview C",
+          "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+          "brand": "Deloitte",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "hitl-controls",
+          "excerpt": "Importantly, the right agentic AI use cases will also involve human review and oversight at specific points in the process, which makes them well suited for a human-in-the-loop design.",
+          "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+          "brand": "Deloitte",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "Agentic AI – lessons from the real world | Deloitte Southeast Asia Link opens in a new tab opens in new window Skip to main content Who we are Overview Purpose & Values Our People Governance Recognition Press room Contact Us What we believe in Future vision Social responsibility Network, brands & alliances Global events About Deloitte Asia Pacific Accolades Analyst Relations Deloitte in the News What we do Overview C",
+          "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+          "brand": "Deloitte",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "vendor-portability",
+          "excerpt": "Rather, successful organisations find a fit-for-purpose model and build a model-agnostic platform for ease of adaption and to avoid future constraints.",
+          "url": "https://www.deloitte.com/southeast-asia/en/services/consulting/perspectives/agentic-ai-real-world-lessons.html",
+          "brand": "Deloitte",
+          "sourceClass": "first-party"
+        }
+      ],
+      "successfullyReviewedSources": 1,
+      "failedSources": 0
+    },
+    {
+      "brand": "EPAM",
+      "sources": [
+        {
+          "url": "https://www.epam.com/services/data-and-analytics/data-and-ai-services-offerings/agentic-process-transformation",
+          "status": "UNKNOWN",
+          "fetchedAt": "2026-09-20T11:49:37.149Z",
+          "httpStatus": 403,
+          "error": "HTTP 403",
+          "proofs": []
+        },
+        {
+          "url": "https://www.epam.com/about/newsroom/press-releases/2025/epam-releases-dial-3-0-an-evolution-of-open-source-genai-enterprise-platform",
+          "status": "UNKNOWN",
+          "fetchedAt": "2026-09-20T11:49:37.150Z",
+          "httpStatus": 403,
+          "error": "HTTP 403",
+          "proofs": []
+        }
+      ],
+      "proofs": [],
+      "successfullyReviewedSources": 0,
+      "failedSources": 2
+    },
+    {
+      "brand": "Thoughtworks",
+      "sources": [
+        {
+          "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.151Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Evaluating AI agents in production: A practical framework | Thoughtworks Menu Close Worldwide | English Australia English Brazil English | Português Canada English Chile English | Español China English | Chinese Ecuador English | Español Germany English | Deutsch India English Singapore English Spain English | Español Thailand English United Kingdom English United States English Worldwide English Search Close Ask Tai",
+              "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "evaluation-system",
+              "excerpt": "This article explores a practical framework for evaluating conversational AI agents, covering everything from unit evaluations and persona-based testing to production observability and continuous improvement.",
+              "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "production-operations",
+              "excerpt": "This article explores a practical framework for evaluating conversational AI agents, covering everything from unit evaluations and persona-based testing to production observability and continuous improvement.",
+              "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            }
+          ]
+        },
+        {
+          "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.151Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Agentic Development Platform | AI/works™| Thoughtworks Back AI/works ™ capabilities Reference overview of AI/works™ capabilities and their role within the platform.",
+              "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "evaluation-system",
+              "excerpt": "Evals Code evaluation module with quality, security and traceability checks, validating generated code against requirements and ensuring enterprise-grade delivery.",
+              "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "Evals Code evaluation module with quality, security and traceability checks, validating generated code against requirements and ensuring enterprise-grade delivery.",
+              "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "production-operations",
+              "excerpt": "Overview Developer Experience Requirements Capture and Enrichment Reverse Engineering Context Library Capabilities and Industry Solutions Library Components Library Dynamic Spec Development Spec to Code Runtime Operations Control Plane AI/works ™ capabilities Reference overview of AI/works™ capabilities and their role within the platform.",
+              "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            }
+          ]
+        },
+        {
+          "url": "https://www.thoughtworks.com/en-us/agent/works",
+          "status": "VERIFIED",
+          "fetchedAt": "2026-09-20T11:49:37.152Z",
+          "httpStatus": 200,
+          "proofs": [
+            {
+              "status": "VERIFIED",
+              "dimension": "agentic-workflows",
+              "excerpt": "Thoughtworks' Agent/works™ - AI Agent Governance Platform Enterprise AI Thoughtworks' AI Agent Governance Platform Stop the sprawl.",
+              "url": "https://www.thoughtworks.com/en-us/agent/works",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "governance-audit",
+              "excerpt": "Thoughtworks' Agent/works™ - AI Agent Governance Platform Enterprise AI Thoughtworks' AI Agent Governance Platform Stop the sprawl.",
+              "url": "https://www.thoughtworks.com/en-us/agent/works",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            },
+            {
+              "status": "VERIFIED",
+              "dimension": "vendor-portability",
+              "excerpt": "Keep one governance standard across frameworks, models and tools.",
+              "url": "https://www.thoughtworks.com/en-us/agent/works",
+              "brand": "Thoughtworks",
+              "sourceClass": "first-party"
+            }
+          ]
+        }
+      ],
+      "proofs": [
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Evaluating AI agents in production: A practical framework | Thoughtworks Menu Close Worldwide | English Australia English Brazil English | Português Canada English Chile English | Español China English | Chinese Ecuador English | Español Germany English | Deutsch India English Singapore English Spain English | Español Thailand English United Kingdom English United States English Worldwide English Search Close Ask Tai",
+          "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "evaluation-system",
+          "excerpt": "This article explores a practical framework for evaluating conversational AI agents, covering everything from unit evaluations and persona-based testing to production observability and continuous improvement.",
+          "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "production-operations",
+          "excerpt": "This article explores a practical framework for evaluating conversational AI agents, covering everything from unit evaluations and persona-based testing to production observability and continuous improvement.",
+          "url": "https://www.thoughtworks.com/insights/blog/machine-learning-and-ai/Evaluating-AI-agents-in-production",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Agentic Development Platform | AI/works™| Thoughtworks Back AI/works ™ capabilities Reference overview of AI/works™ capabilities and their role within the platform.",
+          "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "evaluation-system",
+          "excerpt": "Evals Code evaluation module with quality, security and traceability checks, validating generated code against requirements and ensuring enterprise-grade delivery.",
+          "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "Evals Code evaluation module with quality, security and traceability checks, validating generated code against requirements and ensuring enterprise-grade delivery.",
+          "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "production-operations",
+          "excerpt": "Overview Developer Experience Requirements Capture and Enrichment Reverse Engineering Context Library Capabilities and Industry Solutions Library Components Library Dynamic Spec Development Spec to Code Runtime Operations Control Plane AI/works ™ capabilities Reference overview of AI/works™ capabilities and their role within the platform.",
+          "url": "https://www.thoughtworks.com/ai/works/technical-guide",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "agentic-workflows",
+          "excerpt": "Thoughtworks' Agent/works™ - AI Agent Governance Platform Enterprise AI Thoughtworks' AI Agent Governance Platform Stop the sprawl.",
+          "url": "https://www.thoughtworks.com/en-us/agent/works",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "governance-audit",
+          "excerpt": "Thoughtworks' Agent/works™ - AI Agent Governance Platform Enterprise AI Thoughtworks' AI Agent Governance Platform Stop the sprawl.",
+          "url": "https://www.thoughtworks.com/en-us/agent/works",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        },
+        {
+          "status": "VERIFIED",
+          "dimension": "vendor-portability",
+          "excerpt": "Keep one governance standard across frameworks, models and tools.",
+          "url": "https://www.thoughtworks.com/en-us/agent/works",
+          "brand": "Thoughtworks",
+          "sourceClass": "first-party"
+        }
+      ],
+      "successfullyReviewedSources": 3,
+      "failedSources": 0
+    }
+  ]
+}

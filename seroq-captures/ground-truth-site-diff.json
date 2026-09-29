@@ -1,0 +1,72 @@
+[
+  {
+    "brand": "Initor Global (Target)",
+    "inputUrl": "https://initor-global.co.uk",
+    "resolvedUrl": "https://initor-global.co.uk",
+    "live": true,
+    "httpStatus": 200,
+    "h1": [
+      "Outsourcing Accounting Services",
+      "Empowering Your Business with Expert Consulting",
+      "Empowering UK Accountants with Modern, Tailored Outsourced Accounting Solutions"
+    ],
+    "wordCount": 1891,
+    "schemaCount": 0,
+    "schemaTypes": []
+  },
+  {
+    "brand": "QX Global Group (Competitor)",
+    "inputUrl": "https://qxglobalgroup.com",
+    "resolvedUrl": "https://qxglobalgroup.com",
+    "live": true,
+    "httpStatus": 200,
+    "h1": [
+      "Transforming Finance, Accounting &amp; Recruitment through Outsourcing and Intelligent Automation"
+    ],
+    "wordCount": 1485,
+    "schemaCount": 6,
+    "schemaTypes": [
+      "BreadcrumbList",
+      "LocalBusiness",
+      "Organization",
+      "ProfessionalService",
+      "WebPage",
+      "WebSite"
+    ]
+  },
+  {
+    "brand": "Entigrity (Competitor)",
+    "inputUrl": "https://entigrity.com",
+    "resolvedUrl": "https://my-cpe.com/offshoring/offshore-accounting-services",
+    "live": true,
+    "httpStatus": 200,
+    "h1": [
+      "Offshore Accounting Services for CPA Firm"
+    ],
+    "wordCount": 11145,
+    "schemaCount": 2,
+    "schemaTypes": [
+      "FAQPage",
+      "Service"
+    ]
+  },
+  {
+    "brand": "Advancetrack (Competitor)",
+    "inputUrl": "https://www.advancetrack.com",
+    "resolvedUrl": "https://www.advancetrack.com",
+    "live": true,
+    "httpStatus": 200,
+    "h1": [
+      "Solve Your Accounting Talent Crisis &amp; Start Changing Lives"
+    ],
+    "wordCount": 2257,
+    "schemaCount": 5,
+    "schemaTypes": [
+      "WebPage",
+      "ImageObject",
+      "BreadcrumbList",
+      "WebSite",
+      "Organization"
+    ]
+  }
+]

@@ -1,0 +1,112 @@
+{
+  "brand": "Edevsolutions",
+  "domain": "edevsolutions.com",
+  "category": "Edev Solutions",
+  "queries": [
+    {
+      "q": "best custom software development companies 2026",
+      "brandFit": "unknown"
+    },
+    {
+      "q": "top web and mobile app development agencies",
+      "brandFit": "unknown"
+    },
+    {
+      "q": "dedicated software development team services for B2B",
+      "brandFit": "unknown"
+    }
+  ],
+  "regressionThreshold": 10,
+  "providers": {
+    "gemini": {
+      "model": "gemini-3.8-flash",
+      "classifyModel": "gemini-3.1-flash-lite",
+      "env": "GEMINI_API_KEY"
+    }
+  },
+  "basketVersion": 1,
+  "basketHistory": [
+    {
+      "version": 1,
+      "queries": [
+        {
+          "q": "best custom software development companies 2026",
+          "brandFit": "unknown"
+        },
+        {
+          "q": "top web and mobile app development agencies",
+          "brandFit": "unknown"
+        },
+        {
+          "q": "dedicated software development team services for B2B",
+          "brandFit": "unknown"
+        }
+      ],
+      "since": "2026-09-17",
+      "kind": "initial"
+    }
+  ],
+  "candidatePool": [
+    {
+      "text": "top offshore software engineering companies for startups",
+      "intent": "commercial",
+      "score": 90,
+      "unverified": true,
+      "search_behavior": "retrieval-triggered",
+      "confidence": 0.9,
+      "valid": true,
+      "brandFit": "unknown"
+    },
+    {
+      "text": "best enterprise software development consulting firms",
+      "intent": "commercial",
+      "score": 90,
+      "unverified": true,
+      "search_behavior": "retrieval-triggered",
+      "confidence": 0.9,
+      "valid": true,
+      "brandFit": "unknown"
+    }
+  ],
+  "validationCache": [
+    {
+      "query": "best custom software development companies 2026",
+      "valid": true,
+      "confidence": 0.95,
+      "alternate_meanings": [
+        "Commercial intent: seeking lists of IT service providers.",
+        "Informational intent: industry analysis or future-looking market predictions."
+      ],
+      "dominant_interpretation": "Commercial intent: lists of vetted software vendor agencies.",
+      "search_behavior": "retrieval-triggered",
+      "reason": "The year modifier '2026' forces the engine to retrieve fresh, up-to-date vendor lists rather than relying on stale training data.",
+      "validatedAt": "2026-09-17T16:18:07.484Z"
+    },
+    {
+      "query": "top web and mobile app development agencies",
+      "valid": true,
+      "confidence": 0.95,
+      "alternate_meanings": [
+        "Commercial intent: seeking vendor agencies for engagement.",
+        "Educational intent: comparison/difference between web and mobile app agency models."
+      ],
+      "dominant_interpretation": "Commercial intent: lists of software development agency providers.",
+      "search_behavior": "retrieval-triggered",
+      "reason": "Standard vendor-selection query that triggers AI to aggregate directories and agency listing pages.",
+      "validatedAt": "2026-09-17T16:18:07.484Z"
+    },
+    {
+      "query": "dedicated software development team services for B2B",
+      "valid": true,
+      "confidence": 0.9,
+      "alternate_meanings": [
+        "Commercial intent: searching for service providers for B2B contracts.",
+        "Operational intent: how to manage/integrate dedicated external teams into B2B workflows."
+      ],
+      "dominant_interpretation": "Commercial intent: providers offering dedicated team staffing services.",
+      "search_behavior": "retrieval-triggered",
+      "reason": "AI interprets this as a service-seeking query, returning vendor profiles and staffing solution advertisements.",
+      "validatedAt": "2026-09-17T16:18:07.484Z"
+    }
+  ]
+}
