@@ -2,7 +2,10 @@
 
 import { BuyerJourneyAuditPanel } from "@/components/seroq/buyer-journey-audit-panel";
 
-import { SeroqOnboardingPanel } from "@/components/seroq/onboarding-panel";
+import {
+  SeroqOnboardingPanel,
+  type SeroqOnboardingResult,
+} from "@/components/seroq/onboarding-panel";
 
 import { ActionCenterPanel } from "@/components/seroq/action-center-panel";
 
@@ -77,6 +80,12 @@ function Icon({ children }: { children: ReactNode }) {
 }
 
 const tabIcons: Record<TabKey, ReactNode> = {
+  "Seroq Scan": (
+    <Icon>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 8v8M8 12h8" />
+    </Icon>
+  ),
   "Project Settings": (
     <Icon>
       <circle cx="12" cy="12" r="3" />
@@ -227,6 +236,12 @@ const tabMeta: Record<
   TabKey,
   { title: string; tooltip: string; details: string }
 > = {
+  "Seroq Scan": {
+    title: "Seroq Scan",
+    tooltip: "Analyze a website and run live buyer-journey measurement.",
+    details:
+      "Turn one company URL into a structured brand profile, candidate competitors and commercial buyer journeys, then run a Quick 3, Standard 5 or Full 10 live AI measurement.",
+  },
   "Project Settings": {
     title: "Project Settings",
     tooltip: "Set your brand, site, keywords, and context.",
@@ -1555,6 +1570,50 @@ ${exampleJson}`,
   }
 
   function renderActiveTab() {
+    if (activeTab === "Seroq Scan") {
+      return (
+        <div className="space-y-6">
+          <SeroqOnboardingPanel
+            initialWebsite={state.brand.websites[0] ?? ""}
+            onApply={(result: SeroqOnboardingResult) =>
+              setState((prev) => ({
+                ...prev,
+                brand: {
+                  ...prev.brand,
+                  brandName: result.brandName,
+                  brandAliases: result.aliases.join(", "),
+                  websites: result.website ? [result.website] : prev.brand.websites,
+                  industry: result.industry,
+                  description: result.offerSummary,
+                },
+                auditUrl: result.website || prev.auditUrl,
+                customPrompts: result.buyerJourneys.map((journey) => ({
+                  text: journey.query,
+                  tags: [journey.intent, journey.commercialValue].filter(Boolean),
+                })),
+                competitors: result.competitors.map((competitor) => ({
+                  name: competitor.name,
+                  aliases: [],
+                  websites: [],
+                })),
+              }))
+            }
+          />
+
+          <BuyerJourneyAuditPanel
+            brandName={state.brand.brandName}
+            prompts={state.customPrompts}
+            onImportRuns={(runs) =>
+              setState((prev) => ({
+                ...prev,
+                runs: [...prev.runs, ...runs],
+              }))
+            }
+          />
+        </div>
+      );
+    }
+
     if (activeTab === "Project Settings") {
       return (
         <ProjectSettingsTab
